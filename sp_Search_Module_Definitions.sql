@@ -1,13 +1,13 @@
-USE [SRA]
+USE [Master]
 GO
-/****** Object:  StoredProcedure [ADMIN].[sp_search_module_definitions]    Script Date: 07/14/2020 12:43:40 PM ******/
+
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE proc [ADMIN].[sp_search_module_definitions]
+CREATE proc [dbo].[sp_search_module_definitions]
 (
 @db varchar(50) = null,
 @searchforstring nvarchar(max)= null,
