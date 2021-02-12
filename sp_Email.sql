@@ -1,4 +1,4 @@
-﻿USE [AdHocData]
+﻿USE [MASTER]
 GO
 /****** Object:  StoredProcedure [PSLAO].[sp_Email]    Script Date: 1/27/2021 10:22:02 AM ******/
 SET ANSI_NULLS ON
@@ -7,9 +7,9 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE proc [PSLAO].[sp_Email]
+CREATE proc [dbo].[sp_Email]
 (
-	@from_email     varchar(50)     ='bwebb7@humana.com',
+	@from_email     varchar(50),
 	@to_email		varchar(max),
 	@cc				varchar(max)	=null,    
 	@subj			varchar(max),
@@ -22,14 +22,12 @@ as
 /*
 -----------------------------------------------------------------------------------------------------------------------------------------
 Author: Brennan Webb
-Date Written: 12/05/2020
-Called From:  Production Script
 
 Purpose: Sproc which hold DBmail method with added html elements.
 Example Usage Script (highlight the lines below and Execute): NA
 
-Exec AdhocData.PSLAO.sp_Email
-@To_Email = 'youremail@humana.com',
+Exec [Master].[dbo].[sp_Email]
+@To_Email = 'youremail@selectquote.com',
 @Subj = 'Test',
 @Body = 'Blah,Blah',
 @Body_Format = 'HTML'
@@ -38,9 +36,9 @@ Exec AdhocData.PSLAO.sp_Email
 -----------------------------------------------------------------------------------------------------------------------------------------
 Modification History
 -----------------------------------------------------------------------------------------------------------------------------------------
-Revision      Author        Date                 Reason
-------------- ---------     -------------------- -------------------------------------------------------------------------------------
-00000         BBW			9/05/2020           Implemented
+Revision		Author        Date                 Reason
+-------------	---------     -------------------- -------------------------------------------------------------------------------------
+00000			Brennan.Webb	9/05/2020			 Implemented
 ________________________________________________________________________________________________________________
 */
 

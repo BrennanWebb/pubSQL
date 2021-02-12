@@ -1,4 +1,7 @@
-﻿/*
+﻿
+use [master]
+go
+/*
 ________________________________________________________________________________________________________________
 Purpose: Scrub table columns keeping only the designated @extracttype.  
 Multiple column names may be specified as long as they are comma separated.  See example below.
@@ -6,13 +9,14 @@ Multiple column names may be specified as long as they are comma separated.  See
 Example Usage Script (highlight the lines below and execute once sproc is installed):
 
 	Begin
-		if object_id('tempdb..#trash_data') is not null drop table #trash_data;
+		drop table if exists #trash_data;
 		go
 		Create table #trash_data (Col1 varchar(250),Col2 varchar(250))
 		Insert into #trash_data (Col1, Col2)
 		Values ('{Tg3<E_5=Wum+8g7','0X[0I@;_3o":Oan'),
 			   ('YMVVb7MXnaWYTkE5mW4V6x55bA6RvpqPsJDZNfhB76Ee9tW8JkB5Y6z3wfKz','{,{_}!@~"+([@+#:,/#&[+(]##@-,$)\~#@!\?"#{\\_<!@>&,}-%!/^-'),
-			   ('#>%=#$@?=[.:)=}};/.}_^"##.[{;)}\`#*|&}=\?~|=&`#>*".##:%:&!','What @ mess!*10			?')
+			   ('#>%=#$@?=[.:)=}};/.}_^"##.[{;)}\`#*|&}=\?~|=&`#>*".##:%:&!','What @ mess!*10			?
+			   ')
 
 		Exec sp_scrub '#trash_data','Col1,Col2','C',' ?'; 
 		Select * from #trash_data;
@@ -30,7 +34,7 @@ Parameter Definitions
 ________________________________________________________________________________________________________________
 */
 
-alter proc [dbo].[sp_Scrub] (
+create proc [dbo].[sp_Scrub] (
 	@tablename varchar(500),
 	@columns varchar(500),
 	@extracttype varchar(10),

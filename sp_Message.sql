@@ -1,18 +1,17 @@
-﻿USE [AdHocData]
+﻿USE [Master]
 GO
 /****** Object:  StoredProcedure [PSLAO].[sp_Message]    Script Date: 1/27/2021 10:22:02 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE proc [PSLAO].[sp_Message] (@string varchar(100) = Null, @int int = Null)
+CREATE proc [dbo].[sp_Message] (@string varchar(100) = Null, @int int = Null)
 as
 
 /*
 -----------------------------------------------------------------------------------------------------------------------------------------
 Author: Brennan Webb
 Date Written: 12/05/2020
-Called From:  Production Script
 
 Purpose: Sproc used to shorthand immediate console prints using RaiseError method.
 Example Usage Script (Highlight the lines below and Execute):
