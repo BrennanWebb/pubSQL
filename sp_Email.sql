@@ -7,27 +7,31 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE proc [dbo].[sp_Email]
+alter proc [dbo].[sp_Email]
 (
-	@from_email     varchar(50),
-	@to_email		varchar(max),
-	@cc				varchar(max)	=null,    
-	@subj			varchar(max),
-	@body			varchar(max)	= null,
-	@body_format	varchar(max)	='html',
-	@output         varchar(max)    = null output
+	@Profile_Name   varchar(50),
+	@Recipients		varchar(max)    =null,
+	@cc				varchar(max)	=null,
+	@Bcc			varchar(max)    =null,
+	@Header			varchar(max)    =null,    
+	@Subject		varchar(max),
+	@Body			varchar(max)	= null,
+	@Footer         varchar(1500)   ='',
+	@Body_Format	varchar(max)	='html',
+	@Output         varchar(max)    = null output
 )
 as
 
 /*
 -----------------------------------------------------------------------------------------------------------------------------------------
 Author: Brennan Webb
-
+	
 Purpose: Sproc which hold DBmail method with added html elements.
-Example Usage Script (highlight the lines below and Execute): NA
+Example Usage Script (change the email address, highlight the lines below, and Execute): NA
 
-Exec [Master].[dbo].[sp_Email]
-@To_Email = 'youremail@selectquote.com',
+Exec sp_Email
+@profile_name = 'roboSQL',
+@recipients = 'youremail@selectquote.com',
 @Subj = 'Test',
 @Body = 'Blah,Blah',
 @Body_Format = 'HTML'
@@ -38,39 +42,53 @@ Modification History
 -----------------------------------------------------------------------------------------------------------------------------------------
 Revision		Author        Date                 Reason
 -------------	---------     -------------------- -------------------------------------------------------------------------------------
-00000			Brennan.Webb	9/05/2020			 Implemented
+00000			Brennan.Webb	2/15/2021			 Implemented
 ________________________________________________________________________________________________________________
 */
 
 --apply style
 If @body_format ='html'
 Begin
-  set @body='
-<!doctype html>
+	If @Header is null
+	Begin
+		Set @Header='<!doctype html>
 <html>
 	<head>
 	<style>
 		body {
-			font-family: arial;
+			text-align: left;
+			font-family: Open Sans, arial;
 			font-size: 12px;
+			padding: 5px;
 		}
 
 		h1 {
-			padding: 5px;
-			color: #78BE20;
+			color: #F17C21;
 		}
 
 		h2 {
-			color: #333333;
+			color: #00a5bc;
 		}
 
 		h3 {
-			color: #333333;
+			color: #00a5bc;
+		}
+		
+		h4 {
+			color: #656666;
+		}
+
+		h5 {
+			color: #656666;
+		}
+
+		h6 {
+			color: #656666;
 		}
 
 		table {
-		    padding: 5px;
-			border-color: #666666;
+			padding: 5px;
+			border-color: #656666;
 			border-style: solid;
 			border-width: 1px;
 			border-radius: 5px;
@@ -83,15 +101,15 @@ Begin
 		th {
 			text-transform: uppercase;
 			text-align: left;
-			color: #78be20;
-			background: #eeeeee;
+			color: #656666;
+			background: #e0e0e0;
 			border-radius: 5px;
 			padding:3px;
 
 		}
 
 		td {
-			color: #666666;
+			color: #656666;
 			column-width: auto;
 			padding:3px;
 		}
@@ -100,26 +118,34 @@ Begin
 			font-size: 8px;
 			color: #e0e0e0;
 		}
-	  </style>
-	</head>
+		</style>
+	</head>'
+	End
+  set @body=@header+'
 	<body>
-	'+@body+' 
+	'+isnull(@body,'')+' 
 	</body>
 </html>
 '
 End
+;
+
+SET @Body = @Body+'<HR>'+@Footer;
 
 set @output = @body
-if coalesce(@to_email,@cc) is not null
+if coalesce(@recipients,@cc,@bcc) is not null
 begin
 	exec msdb.dbo.sp_send_dbmail
-				@from_address       = @from_email,
-				@recipients			= @to_email,
-				@copy_recipients	= @cc,
-				@subject			= @subj,
-				@body_format		= @body_format,
-				@body				= @body;
+			@profile_name			= @profile_name,
+			@recipients				= @recipients,
+			@copy_recipients		= @cc,
+			@blind_copy_recipients  = @bcc,
+			@subject				= @subject,
+			@body_format			= @body_format,
+			@body					= @body;
 end
+;
+--Select @output
 ;
 
 
