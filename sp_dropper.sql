@@ -1,6 +1,3 @@
-Use Commissions_CCA
-go
-
 Create proc sp_dropper (@ColumnLike varchar(50) =Null)
 as
 
