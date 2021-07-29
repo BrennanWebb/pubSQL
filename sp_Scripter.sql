@@ -1,4 +1,4 @@
-Use Commissions_CCA
+Use Master
 go
 
 Create proc dbo.sp_Scripter (@script varchar(50) = null, @Like varchar(50)=null,@help bit=0,@search varchar(50)=null,@replace varchar(50)=null)
