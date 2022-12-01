@@ -1,148 +1,152 @@
-﻿USE [AdHocData]
+USE [master]
 GO
-/****** Object:  StoredProcedure [PSLAO].[sp_Columnizer]    Script Date: 1/27/2021 10:22:02 AM ******/
+/****** Object:  StoredProcedure [dbo].[sp_Columnizer]    Script Date: 12/1/2022 10:54:21 AM ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-/*
------------------------------------------------------------------------------------------------------------------------------------------
-Author: Brennan Webb
-Date Written: 12/18/2020
-Called From:  For Adhoc Use
+/************************************************************************************************************************
+ Author:		Brennan Webb
+ Create date:	2022-10-31
+ Jira Ticket:	NA
+ Description:	Allows a user to supply a table name to return metadata on the table in different concatenated forms. See help section below.
+ SLA:			Server Level
+ Caller:		Adhoc Users / Devs
+ Audience:		Adhoc Users / Devs
+ Change Log
+--------------------------------------------------------------------------------------------------------------------------
+| Date       | Ticket ID		| Developer           | Change Summarized                                                  |
+--------------------------------------------------------------------------------------------------------------------------
+| XX/XX/XXXX |					|                     |                                                                    |
+--------------------------------------------------------------------------------------------------------------------------
+**************************************************************************************************************************/
 
-Purpose: Allows a user to supply a table name to return metadata on the table in different concatenated forms.  Use at least a 3 part naming convention for object references.
-Example Usage Script (just highlight the lines below and execute):
-
-	Exec AdHocData.pslao.sp_Columnizer @version=1,@object='AdhocData.pslao.DPM_CASMap';
-	Exec AdHocData.pslao.sp_Columnizer @version=2,@object='AdhocData.pslao.DPM_CASMap';
-	Exec AdHocData.pslao.sp_Columnizer @version=3,@object='AdhocData.pslao.DPM_CASMap';
-	Exec AdHocData.pslao.sp_Columnizer @version=4,@object='AdhocData.pslao.DPM_CASMap';
-
-@Version=1 can also be used with other tools in the DB such as sp_agger.  Example below.
-
-Declare @Columns Varchar(max);
-Exec AdHocData.pslao.sp_Columnizer @version=1,@object='AdhocData.pslao.DPM_CASMap',@Columns=@Columns Output;
-Exec AdHocData.pslao.sp_Agger 'Sum',@Columns;
-
------------------------------------------------------------------------------------------------------------------------------------------
-Modification History
------------------------------------------------------------------------------------------------------------------------------------------
-Revision      Author        Date                 Reason
-------------- ---------     -------------------- -------------------------------------------------------------------------------------
-00000         BBW			12/18/2020           Implemented
-________________________________________________________________________________________________________________
-*/
-CREATE proc [PSLAO].[sp_Columnizer] (@version int, @object varchar(200),@Columns varchar(max)=Null Output)
+ALTER proc [dbo].[sp_Columnizer] (@object varchar(500)=null, @agg varchar(25)=null, @isnull varchar(50) = null)
 as
-BEGIN
-	If @version = 1 goto one; --@version=1 will output column headers only in a single line comma separated string.
-	If @version = 2 goto two; --@version=2 will output column headers + dataType with lengths in a single line comma separated string. Helpful for create table statements.
-	If @version = 3 goto three; --@version=3 will output column headers only in vertical position.
-	If @version = 4 goto four; --@version=4 will output column headers + dataType with lengths in vertical position.
-	return;
-END
 
-one:
-	Begin
-		If @object like '#%' 
+Set NoCount On;
+
+Declare	@sql nvarchar(max)
+		,@db  varchar(150)= isnull(parsename(@object,3),DB_NAME())
+		,@Nid varchar(8) = Cast(left(NewID(),8) as varchar(8))
+		,@Columns varchar(max)
+		,@Columns2 varchar(max)
+		,@Columns3 varchar(max)
+		,@Columns4 varchar(max)
+		;
+
+If @object is null goto help;
+
+Begin
+	Set @sql='
+		Use '+Quotename(@db)+';
+		Declare @db varchar(150) = '''+@db+''', @object varchar(500) = '''+@object+''';
+		Begin
+			If @object like ''#%'' 
 			Begin
-				SELECT @Columns = COALESCE(@Columns + ', ','') + QUOTENAME(COLUMN_NAME)
-				FROM TEMPDB.INFORMATION_SCHEMA.COLUMNS C
-				Where TABLE_NAME like parsename(@object,1)+'%'
-				ORDER BY ORDINAL_POSITION;
-				Select @Columns as Columns_to_String_1;
-				Return;
+				SELECT  @Column_List = COALESCE(@Column_List + '', '','''') + QUOTENAME(C.NAME),
+						@Column_List2 = COALESCE(@Column_List2 + '', '','''') + 
+							QUOTENAME(C.NAME) +'' ''+ 
+							Case when C.MAX_LENGTH is null then T.NAME
+								 when C.MAX_LENGTH = -1 then T.NAME +''(MAX)''
+								 when C.MAX_LENGTH is not null then T.NAME +''(''+cast(C.MAX_LENGTH as varchar(20))+'')''
+							End
+				FROM TEMPDB.SYS.ALL_COLUMNS C With(Nolock) 
+				INNER JOIN TEMPDB.SYS.TYPES T With(Nolock) on C.system_Type_ID=T.System_Type_ID 
+				Where [Object_ID] = object_id(''tempdb..''+@object)
+				ORDER BY COLUMN_ID;
+				Select @Column_List as Columns_Horizontal_String, @Column_List2 as Columns_Horizontal_wType;
+
+				SELECT Case when C.COLUMN_ID =1 then '''' else '','' end+'' ''+QUOTENAME(C.NAME) Columns_Vertical,
+					   Case when C.COLUMN_ID =1 then '''' else '','' end+'' ''+QUOTENAME(C.NAME) +'' ''+ 
+									   Case when C.MAX_LENGTH is null then T.NAME
+											when C.MAX_LENGTH = -1 then T.NAME +''(MAX)''
+											when C.MAX_LENGTH is not null then T.NAME +''(''+cast(C.MAX_LENGTH as varchar(20))+'')''
+										End Columns_Vertical_wType
+				FROM TEMPDB.SYS.ALL_COLUMNS C With(Nolock) 
+				INNER JOIN TEMPDB.SYS.TYPES T With(Nolock) on C.system_Type_ID=T.System_Type_ID 
+				Where [Object_ID] = object_id(''tempdb..''+@object)
+				ORDER BY COLUMN_ID;
 			End
-		Else
-		SELECT @Columns = COALESCE(@Columns + ', ','') + QUOTENAME(COLUMN_NAME)
-		FROM AdhocData.INFORMATION_SCHEMA.COLUMNS C
-		Where TABLE_CATALOG = parsename(@object,3)
-		and TABLE_SCHEMA = parsename(@object,2)
-		and TABLE_NAME = parsename(@object,1)
-		ORDER BY ORDINAL_POSITION;
-		Select @Columns as Columns_to_String_1;
-		Return;
+			Else
+				Begin
+					SELECT @Column_List = COALESCE(@Column_List + '', '','''') + QUOTENAME(COLUMN_NAME),
+						   @Column_List2 = COALESCE(@Column_List2 + '', '','''') + QUOTENAME(COLUMN_NAME) +'' ''+ 
+								Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
+									when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +''(MAX)''
+									when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +''(''+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+'')''
+									End
+					FROM INFORMATION_SCHEMA.COLUMNS C  With(Nolock)
+					Where TABLE_CATALOG = @db
+					and TABLE_SCHEMA = parsename(@object,2)
+					and TABLE_NAME = parsename(@object,1)
+					ORDER BY ORDINAL_POSITION;
+					Select @Column_List as Columns_Horizontal_String, @Column_List2 as Columns_Horizontal_wType;
+
+					SELECT  Case when ORDINAL_POSITION=1 then '''' else '','' end+'' ''+QUOTENAME(COLUMN_NAME) Columns_Vertical,
+							Case when ORDINAL_POSITION=1 then '''' else '','' end+'' ''+QUOTENAME(COLUMN_NAME) +'' ''+ 
+							Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
+								when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +''(MAX)''
+								when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +''(''+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+'')''
+								End Columns_Vertical_wType
+					FROM INFORMATION_SCHEMA.COLUMNS C  With(Nolock)
+					Where TABLE_CATALOG = @db
+					and TABLE_SCHEMA = parsename(@object,2)
+					and TABLE_NAME = parsename(@object,1)
+					ORDER BY ORDINAL_POSITION;
+				End;
+		End;
+		
+'
+Print @SQL
+	print 'sp_columnizer output for '+ @Object;
+	Exec sp_executesql @sql,N'@Column_List varchar(max) Output,@Column_List2 varchar(max) Output', @Columns Output,@Columns2 Output;
+End;
+
+If @Columns is null
+	Begin
+		Print'Looks like the output is null.'+Char(10)+
+		'Check to ensure all desired variables are supplied.'+Char(10)+ 
+		'If you are trying to query an object in a different database than your current session, please add the database to the object parameter.'+Char(10)+ 
+		'For more help and examples, execute the following:'+Char(10)+ 
+	    ''+Char(10)+ 
+		'Exec sp_columnizer;
+		'
 	End;
 
-two:
-	Begin
-		If @object like '#%' 
-			Begin
-				SELECT @Columns = COALESCE(@Columns + ', ','') + QUOTENAME(COLUMN_NAME) +' '+ Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
-																						   when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +'(MAX)'
-																						   when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +'('+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+')'
-																						   End
-				FROM tempdb.INFORMATION_SCHEMA.COLUMNS C
-				Where TABLE_NAME like parsename(@object,1)+'%'
-				ORDER BY ORDINAL_POSITION;
-				Select @Columns as Columns_to_String_2;
-				Return;
-			End
-		Else
-		SELECT @Columns = COALESCE(@Columns + ', ','') + QUOTENAME(COLUMN_NAME) +' '+ Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
-																						   when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +'(MAX)'
-																						   when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +'('+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+')'
-																						   End
-		FROM AdhocData.INFORMATION_SCHEMA.COLUMNS C
-		Where TABLE_CATALOG = parsename(@object,3)
-		and TABLE_SCHEMA = parsename(@object,2)
-		and TABLE_NAME = parsename(@object,1)
-		ORDER BY ORDINAL_POSITION;
-		Select @Columns as Columns_to_String_2;
-		Return;
-	End;
+--If aggregation is needed, it must be a version 1.
+If @agg is not null
+Begin
+	Exec sp_Agger @agg=@agg, @columns=@columns, @isnull=@isnull;
+End;
 
-three:
-	Begin
-		If @object like '#%' 
-			Begin
-				SELECT Case when ORDINAL_POSITION=1 then '' else ',' end+
-				' '+QUOTENAME(COLUMN_NAME) Columns_Vertical_3
-				FROM Tempdb.INFORMATION_SCHEMA.COLUMNS C
-				Where TABLE_NAME like parsename(@object,1)+'%'
-				ORDER BY ORDINAL_POSITION;
-				Return;
-			End
-		Else
-		SELECT Case when ORDINAL_POSITION=1 then '' else ',' end+
-		' '+QUOTENAME(COLUMN_NAME) Columns_Vertical_3
-		FROM AdhocData.INFORMATION_SCHEMA.COLUMNS C
-		Where TABLE_CATALOG = parsename(@object,3)
-		and TABLE_SCHEMA = parsename(@object,2)
-		and TABLE_NAME = parsename(@object,1)
-		ORDER BY ORDINAL_POSITION;
-		Return;
-	End;
 
-four:
-	Begin
-		If @object like '#%' 
-			Begin
-				SELECT Case when ORDINAL_POSITION=1 then '' else ',' end+
-				' '+QUOTENAME(COLUMN_NAME) +
-				' '+ Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
-				when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +'(MAX)'
-				when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +'('+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+')'
-				End Columns_Vertical_4
-				FROM Tempdb.INFORMATION_SCHEMA.COLUMNS C
-				Where TABLE_NAME like parsename(@object,1)+'%'
-				ORDER BY ORDINAL_POSITION;
-				Return;
-			End
-		Else
-		SELECT Case when ORDINAL_POSITION=1 then '' else ',' end+
-		' '+QUOTENAME(COLUMN_NAME) +
-		' '+ Case when CHARACTER_MAXIMUM_LENGTH is null then Data_Type
-		when CHARACTER_MAXIMUM_LENGTH = -1 then Data_Type +'(MAX)'
-		when CHARACTER_MAXIMUM_LENGTH is not null then Data_Type +'('+cast(CHARACTER_MAXIMUM_LENGTH as varchar(20))+')'
-		End Columns_Vertical_4
-		FROM AdhocData.INFORMATION_SCHEMA.COLUMNS C
-		Where TABLE_CATALOG = parsename(@object,3)
-		and TABLE_SCHEMA = parsename(@object,2)
-		and TABLE_NAME = parsename(@object,1)
-		ORDER BY ORDINAL_POSITION;
-		Return;
-	End;
-GO
+return;
+help:
+print '
+sp_Columnizer allows a user to supply a table name to return metadata on the table in different concatenated forms.
+Use at least a 2 part naming convention for object references.
+
+1. Will output column headers in a single line comma separated string + dataType with lengths in horizontal position.
+2. Will output column headers in Vertical position + dataType with lengths in Vertical position.
+--------------------------------------------------------------------------------------------
+				
+--Example Usage Script (just highlight the lines below and execute):	
+	Exec sp_Columnizer @object=''msdb.dbo.restorehistory'';
+
+--------------------------------------------------------------------------------------------
+				
+--This also works with tempdb.  No need to switch databases.
+	Drop table if exists #'+@Nid+';
+	Create table #'+@Nid+'(id int, Name varchar(20), Address varchar(50), DOB Date);
+	Exec sp_Columnizer ''#'+@Nid+'''
+
+--------------------------------------------------------------------------------------------
+				
+--@agg=1 can also be used with other tools in the DB such as sp_agger.  Example below.
+	Declare @Columns Varchar(max);
+	Exec sp_Columnizer @object=''#test_columnizer'',@agg=''sum'',@isnull=''0''; --change @isnull= whatever value you want in an isnull() wrapper, second position.
+
+--------------------------------------------------------------------------------------------
+'
