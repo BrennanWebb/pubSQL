@@ -28,7 +28,7 @@ go
 **************************************************************************************************************************/
 
 
-Alter proc [dbo].[sp_Agger](@agg varchar(25)=null,@columns varchar(max)=null,@isnull varchar(50) = null)
+CREATE OR ALTER proc [dbo].[sp_Agger](@agg varchar(25)=null,@columns varchar(max)=null,@isnull varchar(50) = null)
 as
 
 Set NoCount On;
