@@ -1,10 +1,17 @@
-Create schema [adt]
+
+If not exists (Select * From sys.schemas where name = 'adt')
+	Begin
+		Create schema [adt];
+	End; 
 Go
 
-CREATE TABLE  [adt].[Event](
-	Event_ID int identity(1,1) Primary Key,
-	[Event_Data] [xml] NOT NULL
-) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+If not exists (Select * From sys.tables where name = 'event' and schema_name(schema_id)='adt')
+	Begin
+		CREATE TABLE  [adt].[Event](
+			Event_ID int identity(1,1) Primary Key,
+			[Event_Data] [xml] NOT NULL
+		) ON [PRIMARY]
+	End
 GO
 
 
@@ -34,7 +41,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-	If SYSTEM_USER<>'SQIS-CORP\svc-prd_sql' --Don't log SQL Agent service account
+	If SYSTEM_USER<>'SQIS-CORP\svc-prd_sql' --Don't log SQL Agent service accounts.  Modify as needed.
 	Begin
 		INSERT INTO [adt].[Event] (
 			Event_Data
