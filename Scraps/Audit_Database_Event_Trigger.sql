@@ -9,6 +9,7 @@ If not exists (Select * From sys.tables where name = 'event' and schema_name(sch
 	Begin
 		CREATE TABLE  [adt].[Event](
 			Event_ID int identity(1,1) Primary Key,
+			--Add TimeStamp
 			[Event_Data] [xml] NOT NULL
 		) ON [PRIMARY]
 	End
@@ -36,7 +37,7 @@ GO
 CREATE or Alter TRIGGER [trg_Event]
 ON Database
 FOR 
-	DDL_DATABASE_LEVEL_EVENTS
+	DDL_DATABASE_LEVEL_EVENTS --10016
 AS
 BEGIN
     SET NOCOUNT ON;
