@@ -1,11 +1,14 @@
 USE [master]
 GO
+
 SET ANSI_NULLS ON
 GO
+
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER     proc [dbo].[sp_Search]
+
+CREATE  or alter     proc [dbo].[sp_Search]
 (
 	@search nvarchar(500)= null,
 	@db nvarchar(128) = null,
@@ -19,7 +22,8 @@ CREATE OR ALTER     proc [dbo].[sp_Search]
 as
 SET NOCOUNT ON
 Declare @VersionHistory Varchar(max) =
-'Ver	|	Author			|	Date			|	Note	
+'
+Ver	|	Author			|	Date			|	Note	
 0	|	Brennan Webb	|	09/05/2020		|	Implemented
 1	|	Brennan Webb	|	05/09/2021		|	Added DB filter
 2	|	Brennan Webb	|	10/12/2022		|	Multiple improvements. Simplified naming conventions.  Added various enhancements and string aggregations.
@@ -43,7 +47,8 @@ Declare @VersionHistory Varchar(max) =
 20	|	Brennan Webb	|	10/31/2024		|	Added multiple enhancements.  Added @Debug.  Allowed certain @types to return results with no need for params. Fixed perm outputs for schema.
 21	|	Brennan Webb	|	11/11/2024		|	Added Schedule notes output for SQL agent. Added post @filter to limit results.
 22	|	Brennan Webb	|	12/04/2024		|	Corrected Replication Subscription lookup to include article name matching.
-22.1|	Brennan Webb	|	12\04\2024		|	Development Error, left testing code in on index.	
+22.1|	Brennan Webb	|	12/04/2024		|	Development Error, left testing code in on index.
+23  |	Brennan Webb	|	12/05/2024		|	Added Drop and Create scripts for indexes.  Added JobName to SQL Agent Search Output.	
 '
 
 declare @nvar_sql nvarchar(max);
@@ -230,6 +235,7 @@ IF @type IS NULL
 		,cast(a.job_id as varchar(50)) [id]
 		,a.name
 		,char(10) +''/*''+ char(10) +
+		 ''--Job Name:''+ a.name + char(10) +
 		 ''--Step ID:''+ cast(b.step_id as varchar(10)) + char(10) +
 		 ''--Step Name:'' + Isnull(b.step_name,''NA'') + char(10) +
 		 ''--Subsystem:'' + Isnull(b.subsystem,''NA'') + char(10) +
@@ -368,7 +374,7 @@ Group by a.id
 If @type in ('index','ix','i')
 	Begin
 		set @nvar_sql='drop table if exists '+@randtbl+';
-				  create table '+@randtbl+' ([Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), [Published] varchar(3), [IndexName] nvarchar(128), [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] varchar(100), [LastUserSeek] nvarchar(4000), [UserScans] varchar(100), [LastUserScan] nvarchar(4000), [UserLookups] varchar(100), [LastUserLookup] nvarchar(4000), [UserUpdates] varchar(100), [LastUserUpdate] nvarchar(4000), [SystemSeeks] varchar(100), [LastSystemSeek] nvarchar(4000), [SystemScans] varchar(100), [LastSystemScan] nvarchar(4000), [SystemLookups] varchar(100), [LastSystemLookup] nvarchar(4000), [SystemUpdates] varchar(100), [LastSystemUpdate] nvarchar(4000));
+				  create table '+@randtbl+' ([Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), [Published] varchar(3), [IndexName] nvarchar(128), [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] varchar(100), [LastUserSeek] nvarchar(4000), [UserScans] varchar(100), [LastUserScan] nvarchar(4000), [UserLookups] varchar(100), [LastUserLookup] nvarchar(4000), [UserUpdates] varchar(100), [LastUserUpdate] nvarchar(4000), [SystemSeeks] varchar(100), [LastSystemSeek] nvarchar(4000), [SystemScans] varchar(100), [LastSystemScan] nvarchar(4000), [SystemLookups] varchar(100), [LastSystemLookup] nvarchar(4000), [SystemUpdates] varchar(100), [LastSystemUpdate] nvarchar(4000),DropScript Varchar(max),CreateScript Varchar(max));
 				  '
 		EXEC sp_executesql @nvar_sql;
 		 
@@ -416,6 +422,8 @@ If @type in ('index','ix','i')
 			, IU.last_system_lookup [LastSystemLookup]
 			, IU.system_updates [SystemUpdates]
 			, IU.last_system_update [LastSystemUpdate]
+			, NULL as DropScript
+			, NULL as CreateScript
 			From sys.objects o with (nolock) 
 			INNER JOIN sys.schemas S with (nolock) ON o.Schema_ID = S.[schema_id]
 			INNER JOIN sys.indexes I with (nolock) ON o.Object_ID = I.[object_id]
@@ -431,7 +439,7 @@ If @type in ('index','ix','i')
 						GROUP BY P.[object_id]
 							, P.index_id
 							, P.[Rows]) IndexStats ON I.[object_id] = IndexStats.TableObjectID AND I.index_id = IndexStats.IndexID
-			CROSS APPLY (SELECT COL.[name] + '', ''
+			CROSS APPLY (SELECT QuoteName(COL.[name]) + IIF(is_descending_key = 1,'' desc '','''') + '', ''
 						   FROM sys.index_columns IC WITH(NOLOCK)
 						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
 						   WHERE IC.[object_id] = o.Object_ID
@@ -439,7 +447,7 @@ If @type in ('index','ix','i')
 							 AND IC.is_included_column = 0
 						 ORDER BY IC.key_ordinal
 						 FOR XML PATH ('''')) IC (IndexedColumns)
-			CROSS APPLY (SELECT COL.[name] + '', ''
+			CROSS APPLY (SELECT QuoteName(COL.[name]) + '', ''
 						   FROM sys.index_columns IC WITH(NOLOCK)
 						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
 						   WHERE IC.[object_id] = o.Object_ID
@@ -452,6 +460,27 @@ If @type in ('index','ix','i')
 		end;
 '
 		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
+		IF @Print = 1 Print @nvar_sql;
+		EXEC (@nvar_sql); 
+
+		Set @nvar_sql ='
+		Update A
+		Set  DropScript = IIF([PrimaryKey]=1
+								,''Alter Table ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+'' Drop Constraint ''+ QuoteName([IndexName])+'';''
+								,''Drop Index ''+ QuoteName([IndexName]) + CHAR(10)+ '' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName])+'';''
+							 )+ CHAR(10) 
+			,CreateScript = CHAR(10) + 
+							IIF([PrimaryKey]=1
+									,''ALTER TABLE ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+ ''ADD CONSTRAINT ''+ QuoteName([IndexName])+ '' PRIMARY KEY ''+ [IndexType]+'' (''+[IndexedColumns]+'');''
+									,''Create ''+[IndexType]+'' Index ''+ QuoteName([IndexName])
+										+ CHAR(10)+'' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) 
+										+ ''(''+ [IndexedColumns]+ '')''
+										+ IIF(Len([IncludedColumns]) <>0, CHAR(10)+'' Include( ''+[IncludedColumns]+ '')'', '''')
+										+ IIF(Len([Filter])<>0, CHAR(10)+'' Where ''+ [Filter], '''')
+										+'';''
+								)
+		From '+@randtbl+' A
+		'
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql); 
 		
@@ -922,6 +951,7 @@ Return;
 
 help:
 print '
+/*
 This proc allows a user to search object metadata for terms over all databases, some databases, or just one database.  
 It also searches SQL agent jobs based on job name, step name, or command definition.
 
@@ -953,7 +983,7 @@ See usage examples below.
 
 --------------------------------------------------------------------
 **Note** - Some of these executions require View Definition as well as View Server State permission.
-
+*/
 -------------------------------------------------------------------------------------------------------
 --General Object Search
 -------------------------------------------------------------------------------------------------------
@@ -1026,10 +1056,10 @@ sp_search @type = ''perm'';
 --Partition Search
 -------------------------------------------------------------------------------------------------------
 --Search partitions for ''Search_term'' via sys.indexes and sys.partitions.
-sp_search @search =''<User>, <Login>, Or <Securable>'', @db =''Database_Name'', @type = ''partition'' 
+sp_search @search =''<tableName>, <indexName>, Or <partitionfunctionName>'', @db =''Database_Name'', @type = ''partition'' 
 
 --If @db is not specified, the entire server will be searched by @search term.
-sp_search @search =''<User>, <Login>, Or <Securable>'', @type = ''partition'';
+sp_search @search =''<tableName>, <indexName>, Or <partitionfunctionName>'', @type = ''partition'';
 
 --If @db and @search is not specified, the entire server will be searched by @search term.
 sp_search @type = ''part''; 
@@ -1037,10 +1067,14 @@ sp_search @type = ''part'';
 --------------------------------------------------------------------
 
 '
-Print @VersionHistory;
+
+Print '/*'+@VersionHistory+'*/';
 Return;
 
 
 
+
+
+GO
 
 
