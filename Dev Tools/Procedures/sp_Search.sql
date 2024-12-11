@@ -8,10 +8,10 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE  or alter     proc [dbo].[sp_Search]
+CREATE   or ALTER   proc [dbo].[sp_Search]
 (
 	@search nvarchar(500)= null,
-	@db nvarchar(128) = null,
+	@db nvarchar(4000) = null,
 	@type varchar(50) = null,
 	@sys_obj bit = 0, --Suppress system objects by default
 	@sort varchar(1500) = Null,
@@ -27,7 +27,7 @@ Ver	|	Author			|	Date			|	Note
 0	|	Brennan Webb	|	09/05/2020		|	Implemented
 1	|	Brennan Webb	|	05/09/2021		|	Added DB filter
 2	|	Brennan Webb	|	10/12/2022		|	Multiple improvements. Simplified naming conventions.  Added various enhancements and string aggregations.
-3	|	Brennan Webb	|	11/28/2022		|	Added functionality of search "types".  Credit to Thomas Durst for the build of the index code.
+3	|	Brennan Webb	|	11/28/2022		|	Added functionality of search "types".  Credit to Thomas Durst for the build of the base index code.
 4	|	Brennan Webb	|	01/13/2023		|	Changed agent specific output script.
 5	|	Brennan Webb	|	04/24/2023		|	Added filter for system objects.
 6	|	Brennan Webb	|	01/26/2024		|	Removed unecessary reference to sys.modules. Switched to using MS function for object_definition().
@@ -48,15 +48,19 @@ Ver	|	Author			|	Date			|	Note
 21	|	Brennan Webb	|	11/11/2024		|	Added Schedule notes output for SQL agent. Added post @filter to limit results.
 22	|	Brennan Webb	|	12/04/2024		|	Corrected Replication Subscription lookup to include article name matching.
 22.1|	Brennan Webb	|	12/04/2024		|	Development Error, left testing code in on index.
-23  |	Brennan Webb	|	12/05/2024		|	Added Drop and Create scripts for indexes.  Added JobName to SQL Agent Search Output.	
+23  |	Brennan Webb	|	12/05/2024		|	Added Drop and Create scripts for indexes.  Added JobName to SQL Agent Search Output.
+24	|	Brennan Webb	|	12/10/2024		|	Changed @db to more than 128 chars since this param can take comma separated DBs. 
+												Added functionality for fully qualified objects being submitted to the @search param (@type=index only for now).
 '
-
+declare @start_time datetime = getdate();
+declare @end_time datetime 
 declare @nvar_sql nvarchar(max);
 declare @var_sql  varchar(8000);
 declare	@randtbl nvarchar(10)= '##'+(Select left(newID(),8));
 declare	@sp_randForeachDb nvarchar(15)= Replace(@randtbl,'##','##sp_');
-declare @object_id bigint
+declare @object_id bigint, @object_id_nvar nvarchar(max) 
 declare	@object_id_tbl nvarchar(50)= Replace(@randtbl,'##','##object_id_tbl_');
+declare @object_id_tbl_cnt int;
 
 -------------------------------------------------------------------------------------------------------
 --Universal Operation Creation and Param Cleanup
@@ -69,38 +73,43 @@ IF @debug= 1 Print '@db String: '+@db;
 --Trim spaces on @search term
 SET @search = Trim(@search)
 
---See if we can determine any unique object id's by @search string and or db + @search String.  This will be used in future enhancements.
+--See if we can determine any unique object id's by @search string and or @db x @search string.
 Begin
 	Set @nvar_sql ='
 	Drop table if exists '+@object_id_tbl+';
-	Create table '+@object_id_tbl+' ([SearchTerm] NVARCHAR(500) NULL,[DatabaseName] NVARCHAR(128) NULL,[SchemaName] NVARCHAR(128) NULL,[ObjectName] NVARCHAR(128) NULL,[FullObjectName] NVARCHAR(1500) NULL,[Object_ID] INT NULL);
+	Create table '+@object_id_tbl+' (ID int identity(1,1),[DatabaseName] NVARCHAR(128) NULL,[SchemaName] NVARCHAR(128) NULL,[ObjectName] NVARCHAR(128) NULL,[FullObjectName] NVARCHAR(1500) NULL,[Object_ID] INT NULL);
 	
-	Insert into '+@object_id_tbl+' ([SearchTerm],[DatabaseName],[SchemaName],[ObjectName],[FullObjectName],[Object_ID])
-	Select @search SearchTerm,
-		Parsename(@search,3) [DatabaseName],
-		Parsename(@search,2) [SchemaName],
-		Parsename(@search,1) [ObjectName],
-		QuoteName(Parsename(@search,3))+''.''+QuoteName(Parsename(@search,2))+''.''+QuoteName(Parsename(@search,1)) [FullObjectName],
-		Object_ID(QuoteName(Parsename(@search,3))+''.''+QuoteName(Parsename(@search,2))+''.''+QuoteName(Parsename(@search,1)))[Object_ID]
-	Where Len(@Search)>0
-	UNION
-	Select @search SearchTerm,
-		Value [DatabaseName],
-		Parsename(@search,2) [SchemaName],
-		Parsename(@search,1) [ObjectName],
-		QuoteName(value)+''.''+QuoteName(Parsename(@search,2))+''.''+QuoteName(Parsename(@search,1)) [FullObjectName],
-		Object_ID(QuoteName(value)+''.''+QuoteName(Parsename(@search,2))+''.''+QuoteName(Parsename(@search,1)))[Object_ID]
-	From String_Split(@db,'','')
-	Where Len(@Search)>0;
+	Insert into '+@object_id_tbl+' ([DatabaseName],[SchemaName],[ObjectName],[FullObjectName],[Object_ID])
+	Select *
+	From (
+		Select 
+			Parsename(Trim(s.value),3) [DatabaseName],
+			Parsename(Trim(s.value),2) [SchemaName],
+			Parsename(Trim(s.value),1) [ObjectName],
+			QuoteName(Parsename(Trim(s.value),3))+''.''+QuoteName(Parsename(Trim(s.value),2))+''.''+QuoteName(Parsename(Trim(s.value),1)) [FullObjectName],
+			Object_ID(QuoteName(Parsename(Trim(s.value),3))+''.''+QuoteName(Parsename(Trim(s.value),2))+''.''+QuoteName(Parsename(Trim(s.value),1)))[Object_ID]
+		From String_Split(Replace(Replace(@search,''['',''''),'']'',''''),'','') s
+		Where Len(@Search)>0
+	)A
+	Where [Object_ID] is not null;
 	'
 	IF @debug= 1 Print @nvar_sql;
-	EXEC sp_executesql @nvar_sql, N'@search nvarchar(500), @db nvarchar(128)',@search=@search, @db=@db;
+	EXEC sp_executesql @nvar_sql, N'@search nvarchar(500), @db nvarchar(4000)',@search=@search, @db=@db;
+	Set @object_id_tbl_cnt=@@Rowcount;
+
+	--Object_id search is only available for particular search types. This will limit @db to exactly what is specified.
+	If @object_id_tbl_cnt>0 and @type in ('index', 'ix','i')
+		Begin
+			Set @nvar_sql = 'Select @db= String_Agg([DatabaseName],'','') From '+@object_id_tbl+';'
+			IF @debug= 1 Print @nvar_sql;
+			EXEC sp_executesql @nvar_sql, N'@db varchar(4000) Output', @db Output;
+		End
 
 	If @debug = 1
-	Begin
-		Set @nvar_sql = 'Select * From '+@object_id_tbl+';'
-		EXEC sp_executesql @nvar_sql;
-	End
+		Begin
+			Set @nvar_sql = 'Select * From '+@object_id_tbl+';'
+			EXEC sp_executesql @nvar_sql;
+		End;
 End;
 
 
@@ -360,11 +369,10 @@ Group by a.id
 		IF @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql; 
 
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by [source],[Type],[name]')+';';
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by [source],[Type],[name]')+';';
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
-	
-		Return;
+
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -455,8 +463,15 @@ If @type in ('index','ix','i')
 							 AND IC.is_included_column = 1
 						 ORDER BY IC.key_ordinal
 						 FOR XML PATH ('''')) IC2 (IncludedColumns)
-			WHERE o.[type] = ''U'' --userTables
-			 and (o.[Name] = ''' + @search + ''' or I.[name] = ''' + @search + ''')
+			WHERE 1=1
+			'+IIF((len(@search) = 0 or @search is Null), '',
+			  IIF(@object_id_tbl_cnt>0
+				,' and exists (Select * From '+@object_id_tbl+' oit Where oit.[DatabaseName]= DB_Name() and o.[object_id]=oit.[object_id]) '
+				,' and o.[type] = ''U'' --userTables
+			       and (o.[Name] = ''' + @search + ''' or I.[name] = ''' + @search + ''')'
+				 )
+				 )+'
+			;
 		end;
 '
 		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
@@ -484,11 +499,10 @@ If @type in ('index','ix','i')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql); 
 		
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1,2,3,TotalSpaceMB desc')+';';
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1,2,3,TotalSpaceMB desc')+';';
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 		
-		Return;
 	End;
 -------------------------------------------------------------------------------------------------------
 --Column Search Module
@@ -550,11 +564,10 @@ If @type in ('column','col','c')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
 		
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by ExactMatch desc, 1 asc')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by ExactMatch desc, 1 asc')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 	
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -618,11 +631,10 @@ If @type in ('QueryStats','qs')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by Last_Cache_Hit_Ratio ASC')+';';  
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by Last_Cache_Hit_Ratio ASC')+';';  
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -725,15 +737,14 @@ If @type in ('replication','repl','r')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
 		
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1 asc')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1 asc')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		set @nvar_sql='Select * From '+@randtbl+'2 a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1 asc')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+'2 a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1 asc')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 	
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -794,15 +805,14 @@ If @type in('Reference', 'ref')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
 		
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by Referencing_Object_Name, Referenced_Object ')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by Referencing_Object_Name, Referenced_Object ')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		set @nvar_sql='Select * From '+@randtbl+'_Messages a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1 ')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+'_Messages a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1 ')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -866,15 +876,14 @@ If @type in('Permission','Permissions','perm','pm')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
 		
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by principal_name, class_desc, permission_name ')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by principal_name, class_desc, permission_name ')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		set @nvar_sql='Select * From '+@randtbl+'2 a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1,2 ')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+'2 a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1,2 ')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
@@ -934,16 +943,17 @@ If @type in('Partition','part','pd')
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
 
-		set @nvar_sql='Select * From '+@randtbl+' a Where 1=1 '+Char(10)+IIF(@filter is not null, 'AND '+@filter,'')+Char(10)+IIF(@sort is not null, 'Order by '+@sort,'Order by 1,2,3,4 ')+';'; 
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1,2,3,4 ')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		Return;
 	End;
 
 -------------------------------------------------------------------------------------------------------
 --Master Return
 -------------------------------------------------------------------------------------------------------
+Set @end_time = getdate();
+print char(10)+char(10)+'sp_search run time (seconds):'+Cast(DateDiff(s,@start_time,@end_time)as varchar(50));
 Return;
 -------------------------------------------------------------------------------------------------------
 --Help Documentation
@@ -954,6 +964,8 @@ print '
 /*
 This proc allows a user to search object metadata for terms over all databases, some databases, or just one database.  
 It also searches SQL agent jobs based on job name, step name, or command definition.
+
+GitHub: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search.sql
 
 PARAMETERS:
 	@search nvarchar(500)	-- This is the term to be searched.  % can be used mid string wildcard operations. 
@@ -1016,6 +1028,8 @@ sp_search @search =''Search_term'', @type = ''index'' --You can also supply ''ix
 --Search index metadata for ''Search_term'' in the table name or index name and exist only in the specified DB.
 sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''index'' --You can also supply ''ix'' or simply ''i'' to denote you want the search type on indexes.
 
+--Index search also allows for fully qualified 3 part comma separated objects (database.schema.table). If a fully qualified object is supplied, this will supercede any @db comma separated strings. 
+sp_search @search = ''msdb.dbo.sysjobs,msdb.dbo.sysjobhistory'' ,@type=''i'';
 
 -------------------------------------------------------------------------------------------------------
 --Query Stats Search

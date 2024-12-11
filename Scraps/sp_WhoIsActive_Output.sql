@@ -9,7 +9,7 @@ Set @sql='Exec sp_whoisactive
 			,@get_full_inner_text = 1 
 			,@get_outer_command  = 1
 			,@get_memory_info = 1
-			--,@sort_order = ''[blocked_session_count] desc''
+			,@sort_order = ''[blocked_session_count] desc''
 			,@get_additional_info = 1
 			,@get_task_info = 1  
 			,@find_block_leaders = 1
@@ -37,3 +37,6 @@ exec sp_executeSQL @exec;
 --For testing only, show the outputs
 Set @exec='Select Dense_Rank() over ( order by collection_time desc) Poll_ID , * From '+@destination_table+';'
 exec sp_executeSQL @exec;
+
+
+--Select Dense_Rank() over ( order by collection_time desc) Poll_ID , * From [Test_Sandbox].[dbo].[WhoIsActive_Profile1];
