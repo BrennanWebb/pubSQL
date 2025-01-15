@@ -8,7 +8,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE   or ALTER   proc [dbo].[sp_Search]
+CREATE or ALTER   proc [dbo].[sp_Search]
 (
 	@search nvarchar(500)= null,
 	@db nvarchar(4000) = null,
@@ -50,7 +50,9 @@ Ver	|	Author			|	Date			|	Note
 22.1|	Brennan Webb	|	12/04/2024		|	Development Error, left testing code in on index.
 23  |	Brennan Webb	|	12/05/2024		|	Added Drop and Create scripts for indexes.  Added JobName to SQL Agent Search Output.
 24	|	Brennan Webb	|	12/10/2024		|	Changed @db to more than 128 chars since this param can take comma separated DBs. 
-												Added functionality for fully qualified objects being submitted to the @search param (@type=index only for now).
+												Added functionality for fully qualified objects being submitted to the @search param (@type=''index'' only for now).
+												Fixed String_Agg overflow for SQL Agent jobs.
+												Fixed help documentation flow.
 '
 declare @start_time datetime = getdate();
 declare @end_time datetime 
@@ -73,7 +75,19 @@ IF @debug= 1 Print '@db String: '+@db;
 --Trim spaces on @search term
 SET @search = Trim(@search)
 
+-------------------------------------------------------------------------------------------------------
+--If @search is blank, we will throw errors and refer to help section.
+-------------------------------------------------------------------------------------------------------
+	--if @Search is blank/null (after trim) and @Type is null (general search), raise error and goto help:
+	If (Len(@Search)=0 or @Search is null) and @type is null
+		Begin
+			exec ##sp_message @string ='Exited general search due to zero length or null @search string.  See help documentation below.', @errorseverity=11;
+			Goto help
+		End
+
+-------------------------------------------------------------------------------------------------------
 --See if we can determine any unique object id's by @search string and or @db x @search string.
+-------------------------------------------------------------------------------------------------------
 Begin
 	Set @nvar_sql ='
 	Drop table if exists '+@object_id_tbl+';
@@ -112,8 +126,9 @@ Begin
 		End;
 End;
 
-
+-------------------------------------------------------------------------------------------------------
 --create temp proc to handle messages.
+-------------------------------------------------------------------------------------------------------
 If object_ID('tempdb..##sp_message')is null
 Begin
 	Set @nvar_sql='
@@ -130,8 +145,9 @@ Begin
 End;
 
 
-
+-------------------------------------------------------------------------------------------------------
 --create temp proc to handle for each db request.
+-------------------------------------------------------------------------------------------------------
 Set @nvar_sql = 'Drop proc if exists '+@sp_randForeachDb+';'; 
 IF @debug= 1 Print @nvar_sql;
 EXEC sp_executesql @nvar_sql;
@@ -174,16 +190,6 @@ Set @nvar_sql ='CREATE PROCEDURE '+@sp_randForeachDb+'
 	';
 IF @debug= 1 Print @nvar_sql;
 EXEC sp_executesql @nvar_sql;
-
--------------------------------------------------------------------------------------------------------
---Last Validations of inputs before searches.  We will throw errors and refer to help section.
--------------------------------------------------------------------------------------------------------
-	--if @Search is blank/null (after trim) and @Type is null (general search), raise error and goto help:
-	If (Len(@Search)=0 or @Search is null) and @type is null
-		Begin
-			exec ##sp_message @string ='Exited general search due to zero length or null @search string.  See help documentation below.', @errorseverity=11;
-			Goto help
-		End
 
 -------------------------------------------------------------------------------------------------------
 --General Object + SQL Agent Search Module
@@ -274,7 +280,8 @@ IF @type IS NULL
 Drop table if exists '+@randtbl+'_Agent_Notes;
 Select a.id, 
 [Notes] =''Schedule Count: ''+Cast(Count(Distinct s.Schedule_id)as varchar(50))+'' | ''+
-String_Agg(CASE s.[freq_type]
+String_Agg(CONVERT(VARCHAR(max),
+	CASE s.[freq_type]
 		WHEN   1 THEN ''Once''
 		WHEN   4 THEN ''Daily''
 		WHEN   8 THEN ''Weekly''
@@ -346,7 +353,7 @@ CASE s.[freq_subday_type]
 				CONVERT(VARCHAR, s.[freq_subday_interval]) + '' Hour(s) between '' + 
 				STUFF(STUFF(RIGHT(''000000'' + CONVERT(VARCHAR(8), s.[active_start_time]), 6), 5, 0, '':''), 3, 0, '':'') + '' and '' + 
 				STUFF(STUFF(RIGHT(''000000'' + CONVERT(VARCHAR(8), s.[active_end_time]), 6), 5, 0, '':''), 3, 0, '':'')
-	ELSE '''' END,'' | '') 
+	ELSE '''' END),'' | '')
 Into '+@randtbl+'_Agent_Notes
 from '+@randtbl+' a with (nolock)
 left join [msdb].[dbo].[sysjobschedules] js ON try_Cast(a.[id] as uniqueidentifier) = js.[job_id] 
