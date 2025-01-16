@@ -52,7 +52,7 @@ Ver	|	Author			|	Date			|	Note
 24	|	Brennan Webb	|	12/10/2024		|	Changed @db to more than 128 chars since this param can take comma separated DBs. 
 												Added functionality for fully qualified objects being submitted to the @search param (@type=''index'' only for now).
 												Fixed String_Agg overflow for SQL Agent jobs.
-25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.
+25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.  Added general search for Database Level Triggers.
 '
 declare @start_time datetime = getdate();
 declare @end_time datetime 
@@ -203,7 +203,7 @@ IF @type IS NULL
 		IF @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		--gather information for all object ID's
+		--Search over all object ID's
 		select @nvar_sql = N'use [?];
 		begin
 			exec ##sp_message ''[?] started general search'';
@@ -231,7 +231,33 @@ IF @type IS NULL
 				or o.name like ''%' + @search + '%'' ESCAPE ''!''
 				) 
 			'+IIF(@sys_obj=0,'','--')+'and o.is_ms_shipped = 0 --Dont include SQL packaged objects if @sys_obj = 0.
-			and o.Type_Desc not in (''SYSTEM_TABLE'',''INTERNAL_TABLE'');
+			and o.Type_Desc not in (''SYSTEM_TABLE'',''INTERNAL_TABLE'')
+			
+			UNION ALL
+			
+			--Search over DATABASE Level Triggers
+			select ''DB'' as [Source]
+			,t.object_id [ID]
+			,quotename(db_name()) +''.''+ quotename(object_schema_name(t.object_id,db_id())) +''.''+ quotename(t.[name]) [Name]
+			,char(10) +''/*''+ char(10) +
+			''Object Type:''+ Isnull(t.[type_desc],''NA'') + char(10) +
+			''Object Name:'' + Isnull(quotename(db_name()) +''.''+ quotename(object_schema_name(t.object_id,db_id())) +''.''+ quotename(t.[name]) ,''NA'') + char(10) +
+			''Definition:''+ char(10) +
+			''*/''+ char(10) +
+				''Use '' + Isnull(quotename(db_name()),''NA'') + '';'' + char(10) + ''GO'' + char(10) + 
+				Isnull(Cast(object_definition(t.object_id) as varchar(max)),''NA'')  + char(10) + 
+				''GO'' + char(10) AS Definition
+			,Datalength(Cast(object_definition(t.object_id) as varchar(max))) AS DataLengthBytes
+			,t.[type_desc] [Type]
+			,t.create_date	
+			,t.modify_date
+			from [sys].[triggers] t with (nolock)
+			where (Cast(object_definition(t.object_id) as varchar(max)) like ''%' + @search + '%'' ESCAPE ''!''
+				or t.name like ''%' + @search + '%'' ESCAPE ''!''
+				) 
+			'+IIF(@sys_obj=0,'','--')+'and t.is_ms_shipped = 0 --Dont include SQL packaged objects if @sys_obj = 0.
+			and t.Type_Desc in (''DATABASE'');
+			;
 		end
 		
 		exec ##sp_message ''[?] Results Found'', @@Rowcount;
@@ -241,7 +267,6 @@ IF @type IS NULL
 		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
 		IF @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
-	
 
 	--get agent jobs which contain search string
 		set @nvar_sql='
