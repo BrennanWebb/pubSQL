@@ -52,7 +52,7 @@ Ver	|	Author			|	Date			|	Note
 24	|	Brennan Webb	|	12/10/2024		|	Changed @db to more than 128 chars since this param can take comma separated DBs. 
 												Added functionality for fully qualified objects being submitted to the @search param (@type=''index'' only for now).
 												Fixed String_Agg overflow for SQL Agent jobs.
-												Fixed help documentation flow.
+25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.
 '
 declare @start_time datetime = getdate();
 declare @end_time datetime 
