@@ -1,0 +1,32 @@
+sp_Search Release Notes
+
+Ver	|	Author		|	Date			|	Note	
+0	|	Brennan Webb	|	09/05/2020		|	Implemented
+1	|	Brennan Webb	|	05/09/2021		|	Added DB filter
+2	|	Brennan Webb	|	10/12/2022		|	Multiple improvements. Simplified naming conventions.  Added various enhancements and string aggregations.
+3	|	Brennan Webb	|	11/28/2022		|	Added functionality of search "types".  Credit to Thomas Durst for the build of the base index code.
+4	|	Brennan Webb	|	01/13/2023		|	Changed agent specific output script.
+5	|	Brennan Webb	|	04/24/2023		|	Added filter for system objects.
+6	|	Brennan Webb	|	01/26/2024		|	Removed unecessary reference to sys.modules. Switched to using MS function for object_definition().
+7	|	Brennan Webb	|	03/05/2024		|	Changed index search to definitive rather than wildcard search.
+8	|	Brennan Webb	|	03/12/2024		|	Added Column Search and updated the foreachDB approach away from msForEachDB to custom temp proc.
+9	|	Brennan Webb	|	03/29/2024		|	Added search against sys.dm_exec_query_stats.  Also added a custom sort ability.
+10	|	Brennan Webb	|	04/01/2024		|	Added ability to print the requested executing command.  This can be used for debugging.
+11	|	Brennan Webb	|	04/03/2024		|	Corrected math for Cache_Hit_Ratio from subtraction to addition. Also flipped denominator and numerator to get correct math.
+12	|	Brennan Webb	|	04/03/2024		|	Corrected need for specific database on query stats.
+13	|	Brennan Webb	|	04/18/2024		|	Corrected DB output for only DBs for which current user has access.
+14	|	Brennan Webb	|	07/22/2024		|	Added replication lookups.
+15	|	Brennan Webb	|	08/07/2024		|	Added ability to specify specific databases by comma separated string.
+16	|	Brennan Webb	|	08/07/2024		|	Added permissions lookups.
+17	|	Brennan Webb	|	08/16/2024		|	Enhanced permissions lookup script create and drop.  Added USE DB clauses. Changed print output to make selection from temp table easier.
+18	|	Brennan Webb	|	08/22/2024		|	Added created and modified to general search users can see when objects were last modified and original create dates.
+19	|	Brennan Webb	|	08/28/2024		|	Added print output to general search so that during a full sever search users can see if results are populating.
+20	|	Brennan Webb	|	10/31/2024		|	Added multiple enhancements.  Added @Debug.  Allowed certain @types to return results with no need for params. Fixed perm outputs for schema.
+21	|	Brennan Webb	|	11/11/2024		|	Added Schedule notes output for SQL agent. Added post @filter to limit results.
+22	|	Brennan Webb	|	12/04/2024		|	Corrected Replication Subscription lookup to include article name matching.
+22.1	|	Brennan Webb	|	12/04/2024		|	Development Error, left testing code in on index.
+23  	|	Brennan Webb	|	12/05/2024		|	Added Drop and Create scripts for indexes.  Added JobName to SQL Agent Search Output.
+24	|	Brennan Webb	|	12/10/2024		|	Changed @db to more than 128 chars since this param can take comma separated DBs. 
+									Added functionality for fully qualified objects being submitted to the @search param (@type=''index'' only for now).
+									Fixed String_Agg() overflow for SQL Agent jobs.
+25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.  Added general search for Database Level Triggers.
