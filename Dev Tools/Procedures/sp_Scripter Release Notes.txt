@@ -1,0 +1,4 @@
+sp_Scripter Release Notes
+
+Ver	|	Author		|	Date			|	Note	
+0	|	Brennan Webb	|	03/20/2025		|	Implemented
