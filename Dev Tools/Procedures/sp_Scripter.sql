@@ -3,11 +3,11 @@ GO
 
 CREATE or ALTER   proc [dbo].[sp_Scripter]
 (
-	@sql NVARCHAR(MAX),
+	@sql NVARCHAR(MAX) = NULL,
 	@sort NVARCHAR(MAX) = NULL,
 	@filter NVARCHAR(MAX) = NULL,
-	@replace_matrix NVARCHAR(MAX),
-	@template NVARCHAR(MAX),
+	@replace_matrix NVARCHAR(MAX)  = NULL,
+	@template NVARCHAR(MAX)  = NULL,
 	@print BIT = 0,
 	@Debug BIT = 0
 
