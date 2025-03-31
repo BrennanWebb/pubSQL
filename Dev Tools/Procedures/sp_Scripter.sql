@@ -9,8 +9,7 @@ CREATE or ALTER   proc [dbo].[sp_Scripter]
 	@replace_matrix NVARCHAR(MAX)  = NULL,
 	@template NVARCHAR(MAX)  = NULL,
 	@print BIT = 0,
-	@Debug BIT = 0
-
+	@debug BIT = 0
 )
 AS
 
@@ -22,11 +21,11 @@ SET STATISTICS PROFILE OFF --Required for use of sp_describe_first_result_set
 IF @sql IS NULL OR @replace_matrix IS NULL OR @template IS NULL GOTO Help;
 --------------------------------------------------------------------------------------------------------
 
-DECLARE @VersionHistory VARCHAR(MAX) ='Version Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Scripter%20Release%20Notes.txt'
+DECLARE @VersionHistory VARCHAR(MAX) ='Version 1 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Scripter%20Release%20Notes.txt'
 DECLARE @NewID VARCHAR(8) =LEFT (NEWID(),8); 
 
-IF @Debug = 1 PRINT'##'+@NewID+CHAR(10);
-IF @Debug = 1 PRINT '@sql: '+@sql+CHAR(10);
+IF @debug = 1 PRINT'##'+@NewID+CHAR(10);
+IF @debug = 1 PRINT '@sql: '+@sql+CHAR(10);
 
 --------------------------------------------------------------------------------------------------------
 /*First stage. This section creates a randomized, dynamically created temp table that mirrors the source.
@@ -85,8 +84,8 @@ SELECT	 @columns = @columns + QUOTENAME(name) + ' ' + system_type_name + IIF(is_
 FROM #TempColumns;
 
 -- Remove last comma
-SET @columns = LEFT(@columns, LEN(@columns) - 1);IF @Debug=1 PRINT @columns+CHAR(10);
-SET @column_names = LEFT(@column_names, LEN(@column_names) - 1); IF @Debug=1 PRINT @column_names+CHAR(10);
+SET @columns = LEFT(@columns, LEN(@columns) - 1);IF @debug=1 PRINT @columns+CHAR(10);
+SET @column_names = LEFT(@column_names, LEN(@column_names) - 1); IF @debug=1 PRINT @column_names+CHAR(10);
 
 -- Final SQL to create a temp table
 DECLARE @tableSQL NVARCHAR(MAX) = 'DROP TABLE IF EXISTS ##'+@NewID+'_Prep; '+CHAR(10)+
@@ -141,12 +140,12 @@ SET @sql = 'Select Identity(int,1,1) ScripterID '+CHAR(10)+
 		  +',TRIM(SUBSTRING([Value], CHARINDEX(''='', [Value]) + 1, LEN([Value]))) [Replacement] '+CHAR(10)+ 
 		  +'into ##'+@NewID+'_replace_matrix '+CHAR(10)+
 		  +'From (Select Trim(Value) [Value] From String_Split('''+@replace_matrix+''','',''))A;'
-IF @Debug=1 PRINT @sql+CHAR(10);
+IF @debug=1 PRINT @sql+CHAR(10);
 EXEC sp_executesql @sql;
 
 --preset the proper escapement for the template
 SET @template= REPLACE(@template,'''',''''''); 
-IF @Debug=1 PRINT '@template: '+@template+CHAR(10);
+IF @debug=1 PRINT '@template: '+@template+CHAR(10);
 
 --Apply the Replacement_Matrix to the template.
 SET @sql = '
@@ -162,14 +161,14 @@ While @i<= (Select Max(ScripterID) From ##'+@NewID+'_replace_matrix)
 		Set @i=@i+1;
 	END
 '
-IF @Debug=1 PRINT @sql+CHAR(10);
+IF @debug=1 PRINT @sql+CHAR(10);
 EXEC sp_executesql @sql, N'@template NVARCHAR(MAX) Output',@template=@template OUTPUT ; 
-IF @Debug=1 PRINT '@template: '+@template+CHAR(10);
+IF @debug=1 PRINT '@template: '+@template+CHAR(10);
 
 --Cross apply the template.
 SET @sql = 'SELECT '''+@template+'''Script '+CHAR(10)+
 		  +'FROM ##'+@NewID+' '+CHAR(10);
-IF @Debug=1 PRINT @sql+CHAR(10);
+IF @debug=1 PRINT @sql+CHAR(10);
 EXEC sp_executesql @sql;
 
 RETURN;
@@ -229,8 +228,8 @@ EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId,
 IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
 '';
 
-EXEC sp_Scripter @sql, @sort ,@replace_matrix ,@template 
-
+EXEC sp_Scripter @sql=@sql, @sort=@sort ,@replace_matrix=@replace_matrix ,@template=@template; 
+GO
 -------------------------------------------------------------------------------------------------------
 --Using a Procedure
 -------------------------------------------------------------------------------------------------------
@@ -248,12 +247,12 @@ DECLARE @replace_matrix VARCHAR(MAX) = ''{Var1}=[ScripterID],{Var2}=[Spid],{Var3
 DECLARE @template NVARCHAR(MAX) = ''
 If ''''Sleeping'''' = ''''{Var3}'''' 
 	BEGIN
-		Kill {Var2}; --Don''''t actually exec this!!! It''''s just a demo :)
+		Kill {Var2}; /*Don''''t actually exec this!!! It''''s just a demo :)*/
 	END;
 '';
 
-EXEC sp_Scripter @sql, @sort ,@filter,@replace_matrix ,@template
-
+EXEC sp_Scripter @sql=@sql, @sort=@sort ,@filter=@filter,@replace_matrix=@replace_matrix ,@template=@template;
+GO
 --------------------------------------------------------------------
 
 '
