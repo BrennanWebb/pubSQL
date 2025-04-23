@@ -212,7 +212,7 @@ DECLARE @sort NVARCHAR(MAX) = ''[name]'';
 DECLARE @replace_matrix VARCHAR(MAX) = ''{Var1}=[ScripterID],{Var2}=[name],{Var3}=[schema_id],{Var4}=[principal_id]''; --[ScripterID] is built into sp_scripter as a default identity column 
 DECLARE @template NVARCHAR(MAX) = ''
 EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, 
-		@step_name=N''''Select ''''{Var2}'''' '''', 
+		@step_name=N''''Select ''''''''{Var2}'''''''' '''', 
 		@step_id={Var1}, 
 		@cmdexec_success_code=0, 
 		@on_success_action=3, 
@@ -222,7 +222,7 @@ EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId,
 		@retry_attempts=0, 
 		@retry_interval=0, 
 		@os_run_priority=0, @subsystem=N''''TSQL'''', 
-		@command=N''''Select {Var2} [name],{Var3} [schema_id] ,{Var4} [principal_id] '''', 
+		@command=N''''Select ''''''''{Var2}'''''''' [name],''''''''{Var3}'''''''' [schema_id] ,''''''''{Var4}'''''''' [principal_id] '''', 
 		@database_name=N''''Master'''', 
 		@flags=0
 IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
