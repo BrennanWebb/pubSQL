@@ -30,3 +30,4 @@ Ver	|	Author		|	Date			|	Note
 									Added functionality for fully qualified objects being submitted to the @search param (@type=''index'' only for now).
 									Fixed String_Agg() overflow for SQL Agent jobs.
 25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.  Added general search for Database Level Triggers.
+26	|	Brennan Webb	|	04/04/2025		|	Added exclusion for offline db's	

@@ -21,11 +21,11 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 )
 as
 SET NOCOUNT ON
-Declare @VersionHistory Varchar(max) ='Version Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search%20Release%20Notes.txt'
-declare @start_time datetime = getdate();
+DECLARE @VersionHistory VARCHAR(MAX) ='Version 26 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search%20Release%20Notes.txt'
+DECLARE @start_time DATETIME = GETDATE();
 declare @end_time datetime 
 declare @nvar_sql nvarchar(max);
-declare @var_sql  varchar(8000);
+declare @var_sql  varchar(max);
 declare	@randtbl nvarchar(10)= '##'+(Select left(newID(),8));
 declare	@sp_randForeachDb nvarchar(15)= Replace(@randtbl,'##','##sp_');
 declare @object_id bigint, @object_id_nvar nvarchar(max) 
@@ -136,6 +136,7 @@ Set @nvar_sql ='CREATE PROCEDURE '+@sp_randForeachDb+'
 						FROM sys.databases SD
 						Where sd.name not in (''''tempdb'''',''''model'''')
 						and HAS_DBACCESS(SD.name) =1
+						and state_desc = ''''ONLINE''''
 						'+IIF((@db is null or Len(@db)=0),'',' and sd.name in ('''''+Replace(@db,',',''''',''''')+''''')')+'
 				''
 				-- Prepare database name list
