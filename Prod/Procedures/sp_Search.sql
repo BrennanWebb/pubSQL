@@ -1,16 +1,9 @@
 USE [master]
 GO
 
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
 CREATE or ALTER   proc [dbo].[sp_Search]
 (
-	@search nvarchar(500)= null,
+	@search nvarchar(max)= null,
 	@db nvarchar(4000) = null,
 	@type varchar(50) = null,
 	@sys_obj bit = 0, --Suppress system objects by default
@@ -21,16 +14,19 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 )
 as
 SET NOCOUNT ON
-DECLARE @VersionHistory VARCHAR(MAX) ='Version 26 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search%20Release%20Notes.txt'
+DECLARE @VersionHistory VARCHAR(MAX) ='Version 27 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search%20Release%20Notes.txt'
 DECLARE @start_time DATETIME = GETDATE();
 declare @end_time datetime 
 declare @nvar_sql nvarchar(max);
 declare @var_sql  varchar(max);
 declare	@randtbl nvarchar(10)= '##'+(Select left(newID(),8));
+declare @randtbl_loop nvarchar(20) = @randtbl+'_loop';
 declare	@sp_randForeachDb nvarchar(15)= Replace(@randtbl,'##','##sp_');
 declare @object_id bigint, @object_id_nvar nvarchar(max) 
 declare	@object_id_tbl nvarchar(50)= Replace(@randtbl,'##','##object_id_tbl_');
 declare @object_id_tbl_cnt int;
+declare @error nvarchar(max) = null;
+declare @loop int = null;
 
 -------------------------------------------------------------------------------------------------------
 --Universal Operation Creation and Param Cleanup
@@ -44,15 +40,69 @@ IF @debug= 1 Print '@db String: '+@db;
 SET @search = Trim(@search)
 
 -------------------------------------------------------------------------------------------------------
+--create temp proc to handle messages.
+-------------------------------------------------------------------------------------------------------
+If object_ID('tempdb..##sp_message')is null
+Begin
+	Set @nvar_sql='
+	Create proc ##sp_message (@string varchar(100) = '''', @int int = '''', @errorseverity int = 0)
+	as
+		Begin
+			Declare @timestamp varchar (19) =convert(varchar,getdate(),121)
+			RAISERROR (''Message: %s | %d | %s'', @errorseverity, 1, @String, @int, @timestamp) WITH NOWAIT;
+			Return;
+		End;
+	';
+	IF @debug= 1 Print @nvar_sql;
+	EXEC sp_executesql @nvar_sql;
+End;
+
+-------------------------------------------------------------------------------------------------------
 --If @search is blank, we will throw errors and refer to help section.
 -------------------------------------------------------------------------------------------------------
-	--if @Search is blank/null (after trim) and @Type is null (general search), raise error and goto help:
-	If (Len(@Search)=0 or @Search is null) and @type is null
-		Begin
-			exec ##sp_message @string ='Exited general search due to zero length or null @search string.  See help documentation below.', @errorseverity=11;
-			Goto help
-		End
+--if @Search is blank/null (after trim) and @Type is null (general search), raise error and goto help:
+If (Len(@Search)=0 or @Search is null) and @type is null
+	Begin
+		exec ##sp_message @string ='Exited general search due to zero length or null @search string.  See help documentation below.', @errorseverity=11;
+		Goto help
+	End;
 
+-------------------------------------------------------------------------------------------------------
+--Since @search is not blank, lets see if it is SQL.  We will test if the user is trying to submit a list of terms to be iterated through. 
+--Only the first ordinal column will be used (column_id=1). @search must match the pattern 'Select %% From %'.
+-------------------------------------------------------------------------------------------------------
+If @search like'Select %% From %'
+Begin
+	SET @nvar_sql = N'		
+	Begin Try
+		Drop table if exists '+@randtbl_loop+';
+		Select *,Identity(int,1,1) RID
+		Into '+@randtbl_loop+'
+		From ('+@search+')as L;
+		
+		Set @loop=(Select Count(*) from '+@randtbl_loop+');
+
+		If @loop > 0 
+			Begin
+				Exec ##sp_message @string =''@search parameter is executable SQL. First column will be used as iterable search terms.''
+			End
+		Else
+			Begin
+				Set @error = ''@search parameter is executable SQL. However, no results were returned.''
+			End
+	End Try
+	Begin Catch
+	End Catch;
+	';
+	IF @debug= 1 Print @nvar_sql;
+	Exec sp_executeSQL @nvar_sql,N'@loop int Output, @error nvarchar(max) Output', @loop=@loop Output,@error=@error Output;
+	If @error is not null
+		Begin
+			Set @error = @error +' See help documentation below.'
+			Exec ##sp_message @string =@error, @errorseverity=11;
+			Goto help;
+		End
+End;
 -------------------------------------------------------------------------------------------------------
 --See if we can determine any unique object id's by @search string and or @db x @search string.
 -------------------------------------------------------------------------------------------------------
@@ -93,25 +143,6 @@ Begin
 			EXEC sp_executesql @nvar_sql;
 		End;
 End;
-
--------------------------------------------------------------------------------------------------------
---create temp proc to handle messages.
--------------------------------------------------------------------------------------------------------
-If object_ID('tempdb..##sp_message')is null
-Begin
-	Set @nvar_sql='
-	Create proc ##sp_message (@string varchar(100) = '''', @int int = '''', @errorseverity int = 0)
-	as
-		Begin
-			Declare @timestamp varchar (19) =convert(varchar,getdate(),121)
-			RAISERROR (''Message: %s | %d | %s'', @errorseverity, 1, @String, @int, @timestamp) WITH NOWAIT;
-			Return;
-		End;
-	';
-	IF @debug= 1 Print @nvar_sql;
-	EXEC sp_executesql @nvar_sql;
-End;
-
 
 -------------------------------------------------------------------------------------------------------
 --create temp proc to handle for each db request.
