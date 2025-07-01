@@ -32,3 +32,4 @@ Ver	|	Author		|	Date			|	Note
 25	|	Brennan Webb	|	01/15/2025		|	Fixed help documentation flow.  Added general search for Database Level Triggers.
 26	|	Brennan Webb	|	04/04/2025		|	Added exclusion for offline db's
 27	|	Brennan Webb	|	06/02/2025		|	Added ability to supply single column select SQL for looping.
+28	|	Brennan Webb	|	06/19/2025		|	Aligned column outputs for replication searches.

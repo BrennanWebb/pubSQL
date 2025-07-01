@@ -14,7 +14,7 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 )
 as
 SET NOCOUNT ON
-DECLARE @VersionHistory VARCHAR(MAX) ='Version 27 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search%20Release%20Notes.txt'
+DECLARE @VersionHistory VARCHAR(MAX) ='Version 28 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
 DECLARE @start_time DATETIME = GETDATE();
 declare @end_time datetime 
 declare @nvar_sql nvarchar(max);
@@ -433,8 +433,8 @@ If @type in ('index','ix','i')
 			, [Is_Disabled] [Disabled]
 			, is_primary_key [PrimaryKey]
 			, is_unique [Unique]
-			, SUBSTRING(IndexedColumns, 1, LEN(IndexedColumns) - 1)	[IndexedColumns]
-			, ISNULL(SUBSTRING(IncludedColumns, 1, LEN(IncludedColumns) - 1), '''') [IncludedColumns]
+			, IndexedColumns.Cols [IndexedColumns]
+			, ISNULL(IncludedColumns.Cols, '''') [IncludedColumns] 
 			, I.[allow_row_locks] [AllowsRowLocks]
 			, I.[allow_page_locks] [AllowsPageLocks]
 			, FORMAT(I.fill_factor * .01, ''#0%'') [FillFactor]
@@ -479,22 +479,18 @@ If @type in ('index','ix','i')
 						GROUP BY P.[object_id]
 							, P.index_id
 							, P.[Rows]) IndexStats ON I.[object_id] = IndexStats.TableObjectID AND I.index_id = IndexStats.IndexID
-			CROSS APPLY (SELECT QuoteName(COL.[name]) + IIF(is_descending_key = 1,'' desc '','''') + '', ''
-						   FROM sys.index_columns IC WITH(NOLOCK)
-						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
-						   WHERE IC.[object_id] = o.Object_ID
+			OUTER APPLY (SELECT STRING_AGG(QuoteName(COL.[name]) + IIF(is_descending_key = 1,'' desc '',''''), '', '') WITHIN GROUP (ORDER BY IC.key_ordinal) AS Cols
+						   FROM sys.index_columns IC WITH(NOLOCK)
+						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
+						   WHERE IC.[object_id] = o.Object_ID
 							 AND IC.index_id = I.index_id
-							 AND IC.is_included_column = 0
-						 ORDER BY IC.key_ordinal
-						 FOR XML PATH ('''')) IC (IndexedColumns)
-			CROSS APPLY (SELECT QuoteName(COL.[name]) + '', ''
-						   FROM sys.index_columns IC WITH(NOLOCK)
-						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
-						   WHERE IC.[object_id] = o.Object_ID
+							 AND IC.is_included_column = 0) AS IndexedColumns
+			OUTER APPLY (SELECT STRING_AGG(QuoteName(COL.[name]), '', '') WITHIN GROUP (ORDER BY IC.key_ordinal) AS Cols
+						   FROM sys.index_columns IC WITH(NOLOCK)
+						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
+						   WHERE IC.[object_id] = o.Object_ID
 							 AND IC.index_id = I.index_id
-							 AND IC.is_included_column = 1
-						 ORDER BY IC.key_ordinal
-						 FOR XML PATH ('''')) IC2 (IncludedColumns)
+							 AND IC.is_included_column = 1) AS IncludedColumns
 			WHERE 1=1
 			'+IIF((len(@search) = 0 or @search is Null), '',
 			  IIF(@object_id_tbl_cnt>0
@@ -675,8 +671,8 @@ If @type in ('QueryStats','qs')
 If @type in ('replication','repl','r')
 	Begin
 		set @nvar_sql='drop table if exists '+@randtbl+','+@randtbl+'2;
-				  create table '+@randtbl+' ([Category] VARCHAR(100) NOT NULL,[PublicationServer] NVARCHAR(500) NULL,[PublicationDB] NVARCHAR(128) NULL,[Publication] NVARCHAR(128) NOT NULL,[PublicationFrequency] VARCHAR(50) NULL,[PublicationStatus] VARCHAR(50) NULL,[PublicationSyncMethod] VARCHAR(55) NULL,[PublicationTableOwner] NVARCHAR(128) NULL,[PublicationTable] NVARCHAR(128) NOT NULL,[SubscriptionServer] NVARCHAR(128) NULL,[SubscriptionDB] NVARCHAR(128) NOT NULL,[SubscriptionOwner] NVARCHAR(128) NULL,[SubscriptionTable] NVARCHAR(128) NOT NULL,[SubscriptionStatus] VARCHAR(50) NULL,[SubscriptionSyncType] VARCHAR(50) NULL,[SubscriptionType] VARCHAR(50) NULL,[SubscriptionUpdateMode] VARCHAR(55) NULL);
-				  create table '+@randtbl+'2 ([Category] VARCHAR(100) NOT NULL,[SubscriptionObjectName] NVARCHAR(500) NULL,[PublicationServer] NVARCHAR(128) NULL,[PublicationDB] NVARCHAR(128) NULL,[Publication] NVARCHAR(128) NULL,[Article] NVARCHAR(128) NULL);
+				  create table '+@randtbl+' ([Category] VARCHAR(100) NOT NULL,[PublicationServer] NVARCHAR(500) NULL,[PublicationDB] NVARCHAR(128) NULL,[Publication] NVARCHAR(128) NOT NULL,[PublicationFrequency] VARCHAR(50) NULL,[PublicationStatus] VARCHAR(50) NULL,[PublicationSyncMethod] VARCHAR(55) NULL,[PublicationTableOwner] NVARCHAR(128) NULL,[PublicationTable] NVARCHAR(128) NOT NULL,[SubscriptionServer] NVARCHAR(128) NULL,[SubscriptionDB] NVARCHAR(128) NOT NULL,[SubscriptionOwner] NVARCHAR(128) NULL,[SubscriptionTable] NVARCHAR(128) NOT NULL,SubscriptionFullObjectName NVARCHAR(1000) NULL,[SubscriptionStatus] VARCHAR(50) NULL,[SubscriptionSyncType] VARCHAR(50) NULL,[SubscriptionType] VARCHAR(50) NULL,[SubscriptionUpdateMode] VARCHAR(55) NULL);
+				  create table '+@randtbl+'2 ([Category] VARCHAR(100) NOT NULL,[SubscriptionDB] NVARCHAR(128),[SubscriptionSchema] NVARCHAR(128),SubscriptionTable NVARCHAR(250), [SubscriptionFullObjectName] NVARCHAR(500) NULL,[PublicationServer] NVARCHAR(128) NULL,[PublicationDB] NVARCHAR(128) NULL,[Publication] NVARCHAR(128) NULL,[Article] NVARCHAR(128) NULL);
 				 '
 		IF @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql; 
@@ -712,6 +708,7 @@ If @type in ('replication','repl','r')
 				, s.dest_db as SubscriptionDB
 				, sa.dest_owner as SubscriptionOwner
 				, sa.dest_table SubscriptionTable
+				, s.dest_db +''''.''''+ sa.dest_owner +''''.''''+ sa.dest_table AS SubscriptionFullObjectName
 				, IIF(s.status =0,''''Inactive'''',IIF(s.status =1,''''Subscribed'''',IIF(s.status =2,''''Active'''',''''Unknown SubscriptionStatus: ''''+Cast(s.status as varchar(20))))) SubscriptionStatus
 				, IIF(s.sync_type =1,''''Automatic'''',IIF(s.sync_type  =2,''''None'''',''''Unknown SubscriptionSyncType: ''''+Cast(s.sync_type  as varchar(20)))) SubscriptionSyncType
 				, IIF(s.subscription_type =0,''''Push'''',IIF(s.subscription_type  =1,''''Pull'''',''''Unknown SubscriptionType: ''''+Cast(s.subscription_type  as varchar(20)))) SubscriptionType
@@ -742,7 +739,10 @@ If @type in ('replication','repl','r')
 				Set @nvar_sql= 
 				''SELECT Distinct
 				''''Subscription'''' As Category
-				,DB_Name()+''''.''''+Object_Schema_Name(so.object_id)+''''.''''+Object_Name(so.object_id) SubscriptionObjectName
+				,DB_Name() AS SubscriptionDB
+				,Object_Schema_Name(so.object_id) as SubscriptionSchema
+				,Object_Name(so.object_id) AS SubscriptionTable
+				,DB_Name()+''''.''''+Object_Schema_Name(so.object_id)+''''.''''+Object_Name(so.object_id) SubscriptionFullObjectName
 				,r.Publisher  as PublicationServer
 				,r.publisher_db as PublicationDB
 				,r.Publication
