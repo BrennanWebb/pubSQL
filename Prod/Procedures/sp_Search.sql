@@ -14,7 +14,7 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 )
 as
 SET NOCOUNT ON
-DECLARE @VersionHistory VARCHAR(MAX) ='Version 28 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
+DECLARE @VersionHistory VARCHAR(MAX) ='Version 29 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
 DECLARE @start_time DATETIME = GETDATE();
 declare @end_time datetime 
 declare @nvar_sql nvarchar(max);
@@ -70,6 +70,7 @@ If (Len(@Search)=0 or @Search is null) and @type is null
 -------------------------------------------------------------------------------------------------------
 --Since @search is not blank, lets see if it is SQL.  We will test if the user is trying to submit a list of terms to be iterated through. 
 --Only the first ordinal column will be used (column_id=1). @search must match the pattern 'Select %% From %'.
+--This is testing script until further notice.
 -------------------------------------------------------------------------------------------------------
 If @search like'Select %% From %'
 Begin
@@ -166,9 +167,10 @@ Set @nvar_sql ='CREATE PROCEDURE '+@sp_randForeachDb+'
 				''      SELECT SD.name AS database_name
 						FROM sys.databases SD
 						Where sd.name not in (''''tempdb'''',''''model'''')
-						and HAS_DBACCESS(SD.name) =1
+						and HAS_DBACCESS(SD.name) = 1
 						and state_desc = ''''ONLINE''''
-						'+IIF((@db is null or Len(@db)=0),'',' and sd.name in ('''''+Replace(@db,',',''''',''''')+''''')')+'
+						'+IIF(@db like '%!%%' Escape'!',' and sd.name like '''''+@db+''''' ',
+						  IIF((@db is null or Len(@db)=0),'',' and sd.name in ('''''+Replace(@db,',',''''',''''')+''''')'))+'
 				''
 				-- Prepare database name list
 				INSERT INTO @database_names( database_name )
@@ -410,12 +412,12 @@ Group by a.id
 -------------------------------------------------------------------------------------------------------
 --Index Search Module
 -------------------------------------------------------------------------------------------------------
---future development. The index script can be shortened now with string_agg() function instead of the for xml path.
 If @type in ('index','ix','i')
 	Begin
 		set @nvar_sql='drop table if exists '+@randtbl+';
-				  create table '+@randtbl+' ([Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), [Published] varchar(3), [IndexName] nvarchar(128), [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] varchar(100), [LastUserSeek] nvarchar(4000), [UserScans] varchar(100), [LastUserScan] nvarchar(4000), [UserLookups] varchar(100), [LastUserLookup] nvarchar(4000), [UserUpdates] varchar(100), [LastUserUpdate] nvarchar(4000), [SystemSeeks] varchar(100), [LastSystemSeek] nvarchar(4000), [SystemScans] varchar(100), [LastSystemScan] nvarchar(4000), [SystemLookups] varchar(100), [LastSystemLookup] nvarchar(4000), [SystemUpdates] varchar(100), [LastSystemUpdate] nvarchar(4000),DropScript Varchar(max),CreateScript Varchar(max));
+				  create table '+@randtbl+' (ID Int Identity(1,1),[Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), ObjectID int, [Published] varchar(3), [IndexName] nvarchar(128), [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), Suggestion varchar(150), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] varchar(100), [LastUserSeek] nvarchar(4000), [UserScans] varchar(100), [LastUserScan] nvarchar(4000), [UserLookups] varchar(100), [LastUserLookup] nvarchar(4000), [UserUpdates] varchar(100), [LastUserUpdate] nvarchar(4000), [SystemSeeks] varchar(100), [LastSystemSeek] nvarchar(4000), [SystemScans] varchar(100), [LastSystemScan] nvarchar(4000), [SystemLookups] varchar(100), [LastSystemLookup] nvarchar(4000), [SystemUpdates] varchar(100), [LastSystemUpdate] nvarchar(4000),DropScript Varchar(max),CreateScript Varchar(max));
 				  '
+		IF @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 		 
 		Set @nvar_sql ='Use [?];
@@ -424,9 +426,11 @@ If @type in ('index','ix','i')
 		End;
 		begin
 			Insert into '+@randtbl+'
-			SELECT DB_Name() [Database]
+			SELECT 
+			  DB_Name() [Database]
 			, S.[name]	[SchemaName]
 			, o.[name] [TableName]
+			, o.Object_ID as ObjectID
 			, o.Is_Published [Published]
 			, I.[name] [IndexName]
 			, I.[Type_Desc] [IndexType]
@@ -434,17 +438,18 @@ If @type in ('index','ix','i')
 			, is_primary_key [PrimaryKey]
 			, is_unique [Unique]
 			, IndexedColumns.Cols [IndexedColumns]
-			, ISNULL(IncludedColumns.Cols, '''') [IncludedColumns] 
+			, IncludedColumns.Cols [IncludedColumns]
+			, Null as Suggestion
 			, I.[allow_row_locks] [AllowsRowLocks]
 			, I.[allow_page_locks] [AllowsPageLocks]
 			, FORMAT(I.fill_factor * .01, ''#0%'') [FillFactor]
 			, I.is_padded [Padded]
-			, ISNULL(SUBSTRING(I.filter_definition, 2, LEN(I.filter_definition) - 2), '''') [Filter]
+			, SUBSTRING(I.filter_definition, 2, LEN(I.filter_definition) - 2) [Filter]
 			-- Index space stats
 			, IndexStats.[RowCount] [IndexRowCount]
-			, IndexStats.TotalSpaceMB [TotalSpaceMB]
-			, IndexStats.UsedSpaceMB [UsedSpaceMB]
-			, IndexStats.UnusedSpaceMB [UnusedSpaceMB]
+			, IndexStats.TotalSpaceMB
+			, IndexStats.UsedSpaceMB
+			, IndexStats.UnusedSpaceMB
 			-- Index usage stats
 			, IU.user_seeks [UserSeeks]
 			, IU.last_user_seek [LastUserSeek]
@@ -468,17 +473,16 @@ If @type in ('index','ix','i')
 			INNER JOIN sys.schemas S with (nolock) ON o.Schema_ID = S.[schema_id]
 			INNER JOIN sys.indexes I with (nolock) ON o.Object_ID = I.[object_id]
 			LEFT JOIN sys.dm_db_index_usage_stats IU with (nolock) ON IU.database_id = DB_ID() AND I.[object_id] = IU.[object_id] AND I.index_id = IU.index_id
-			INNER JOIN (SELECT P.[object_id][TableObjectID]
-							, P.index_id[IndexID]
-							, P.[Rows][RowCount]
-							, CAST(ROUND(((SUM(AU.total_pages) * 8) / 1024.00), 2)AS NUMERIC(36, 2))[TotalSpaceMB]
-							, CAST(ROUND(((SUM(AU.used_pages) * 8) / 1024.00), 2)AS NUMERIC(36, 2))[UsedSpaceMB]
-							, CAST(ROUND(((SUM(AU.total_pages) - SUM(AU.used_pages)) * 8) / 1024.00, 2)AS NUMERIC(36, 2))[UnusedSpaceMB]
-						FROM sys.partitions P WITH(NOLOCK)
-						INNER JOIN sys.allocation_units AU WITH(NOLOCK) ON P.[partition_id] = AU.container_id
-						GROUP BY P.[object_id]
-							, P.index_id
-							, P.[Rows]) IndexStats ON I.[object_id] = IndexStats.TableObjectID AND I.index_id = IndexStats.IndexID
+			INNER JOIN (SELECT ps.[object_id]
+							, ps.index_id
+							, Sum(ps.row_count) [RowCount]
+							, SUM(ps.reserved_page_count) * 8 / 1024.0 AS TotalSpaceMB
+							, SUM(ps.used_page_count) * 8 / 1024.0 AS UsedSpaceMB
+							, (SUM(ps.reserved_page_count) - SUM(ps.used_page_count)) * 8 / 1024.0 AS UnusedSpaceMB
+						FROM sys.dm_db_partition_stats ps WITH(NOLOCK)
+						GROUP BY ps.[object_id]
+							, ps.index_id
+						) IndexStats ON I.[object_id] = IndexStats.[object_id] AND I.index_id = IndexStats.index_id
 			OUTER APPLY (SELECT STRING_AGG(QuoteName(COL.[name]) + IIF(is_descending_key = 1,'' desc '',''''), '', '') WITHIN GROUP (ORDER BY IC.key_ordinal) AS Cols
 						   FROM sys.index_columns IC WITH(NOLOCK)
 						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
@@ -492,6 +496,7 @@ If @type in ('index','ix','i')
 							 AND IC.index_id = I.index_id
 							 AND IC.is_included_column = 1) AS IncludedColumns
 			WHERE 1=1
+			'+IIF(@sys_obj=0,'','--')+'and o.is_ms_shipped = 0 --Dont include SQL packaged objects if @sys_obj = 0.
 			'+IIF((len(@search) = 0 or @search is Null), '',
 			  IIF(@object_id_tbl_cnt>0
 				,' and exists (Select * From '+@object_id_tbl+' oit Where oit.[DatabaseName]= DB_Name() and o.[object_id]=oit.[object_id]) '
@@ -525,7 +530,33 @@ If @type in ('index','ix','i')
 		From '+@randtbl+' A
 		'
 		IF @Print = 1 Print @nvar_sql;
-		EXEC (@nvar_sql); 
+		EXEC (@nvar_sql);
+
+		
+		Set @nvar_sql ='
+		Update A
+		Set Suggestion = IIF(c.Merge_ID is not null,''Merge into #''+Cast(c.Merge_ID as varchar(25)),
+						 IIF(b.Dup_ID is not null and c.Merge_ID is null and a.PrimaryKey = 1,''Merge: PK for #''+Cast(b.Dup_ID as varchar(25)),
+						 IIF(b.Dup_ID is not null and c.Merge_ID is null,''Drop: Dup of #''+Cast(b.Dup_ID as varchar(25)),
+						 Null))) 
+		From '+@randtbl+' A
+		--Dups
+		Outer Apply (Select Min(ID) Dup_ID From  '+@randtbl+' b 
+						Where  a.[Database] = b.[Database]
+						and a.ObjectID = b.ObjectID
+						and a.[IndexedColumns] = b.[IndexedColumns]
+						and IsNull(a.[IncludedColumns],'''') =  IsNull(b.[IncludedColumns],'''')
+						and a.id > b.id)b
+		--Merge
+		Outer Apply (Select Min(ID) Merge_ID From  '+@randtbl+' c 
+						Where  a.[Database] = c.[Database]
+						and a.ObjectID = c.ObjectID
+						and a.[IndexedColumns] = c.[IndexedColumns]
+						and IsNull(a.[IncludedColumns],'''') <>  IsNull(c.[IncludedColumns],'''')
+						and a.id > c.id)c
+		'
+		IF @Print = 1 Print @nvar_sql;
+		EXEC (@nvar_sql);
 		
 		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1,2,3,TotalSpaceMB desc')+';';
 		print char(10)+@nvar_sql;
@@ -593,6 +624,50 @@ If @type in ('column','col','c')
 		EXEC (@nvar_sql);
 		
 		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by ExactMatch desc, 1 asc')+';'; 
+		print char(10)+@nvar_sql;
+		EXEC sp_executesql @nvar_sql;
+	
+	End;
+
+
+-------------------------------------------------------------------------------------------------------
+--Schema Search Module
+-------------------------------------------------------------------------------------------------------
+If @type in ('schema','s')
+	Begin
+		--if @Search is blank/null (after trim) and @Type = 'column' (column search module), raise error and goto help:
+		If (Len(@Search)=0 or @Search is null)
+			Begin
+				exec ##sp_message @string ='Exited schema search due to zero length or null @search string.  See help documentation below.', @errorseverity=11;
+				Goto help
+			End
+
+		set @nvar_sql='drop table if exists '+@randtbl+';
+				  create table '+@randtbl+' (ObjectName nvarchar(1000), ExactMatch Bit);'
+		EXEC sp_executesql @nvar_sql; 
+
+		Set @nvar_sql ='Use [?];
+		Begin
+			exec ##sp_message ''[?] started'';
+		End;
+		Insert into '+@randtbl+'
+		SELECT	db_name()+''.''+object_schema_name(o.Object_ID)+''.''+object_name(o.Object_ID) ObjectName,
+			IIF(s.NAME='''+@search+''',1,0) ExactMatch
+		FROM SYS.ALL_OBJECTS O With(Nolock)
+		INNER JOIN SYS.SCHEMAS S With(Nolock) on O.schema_id=s.schema_id
+		WHERE S.NAME LIKE ''%' + @search + '%'' ESCAPE ''!'' 
+		'+IIF(@sys_obj=0,'','--')+'and o.is_ms_shipped = 0
+		;
+
+		Begin
+			exec ##sp_message ''[?] Results Found'', @@Rowcount;
+		End;
+		'
+		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
+		IF @Print = 1 Print @nvar_sql;
+		EXEC (@nvar_sql);
+		
+		set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1 asc')+';'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 	
@@ -997,14 +1072,15 @@ print '
 This proc allows a user to search object metadata for terms over all databases, some databases, or just one database.  
 It also searches SQL agent jobs based on job name, step name, or command definition.
 
-GitHub: https://github.com/BrennanWebb/pubSQL/blob/main/Dev%20Tools/Procedures/sp_Search.sql
+GitHub: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search.sql
+
+'+@VersionHistory+'
 
 PARAMETERS:
 	@search nvarchar(500)	-- This is the term to be searched.  % can be used mid string wildcard operations. 
 								ex. @search = ''From %account'' will return procs containing the string "From dbo.accounts". 
-								An exclamation point in your search term "!" can be used to handle special characters (such as underscores and brackets) 
-								normally reserved for SQL LIKE operations to be handled as a string literal.
-	@db varchar(128)		-- Specify the database(s) if trying to limit results. Use comma separated string, else the entire server will be searched per the granted user permissions.
+								An exclamation point in your search term "!" can be used to handle special characters (such as underscores and brackets) normally reserved for SQL LIKE operations to be handled as a string literal.
+	@db varchar(128)		-- Specify the database(s) if trying to limit results. Use comma separated string, else the entire server will be searched per the granted user permissions. Single db wildcard also allowed for @db if % character is present. (ex.@db =''DatabaseN%'')
 	@type varchar(50)		-- Distinguishes the type of search being performed. See below for short codes and examples of types.
 	@sys_obj bit			-- Suppress system objects by default
 	@sort varchar(1000)		-- Pass in a list of comma separated columns to get a custom sort order for returned data.
@@ -1015,13 +1091,14 @@ TYPES:
 	sp_search will also allow searches by type, such as column searches and index searches. There are additional search types as well, some less common in usage.
 	
 	@type IS NULL --General search
-	@type in (''index'',''ix'',''i'')
 	@type in (''column'',''col'',''c'')
+	@type in (''schema'',''s'')
+	@type in (''index'',''ix'',''i'')
 	@type in (''QueryStats'',''qs'')
 	@type in (''replication'',''repl'',''r'')
-	@type in(''Reference'', ''ref'')
-	@type in(''Permission'',''Permissions'',''perm'',''pm'')
-	@type in(''Partition'',''part'',''pd'')
+	@type in(''reference'', ''ref'')
+	@type in(''permission'',''permissions'',''perm'',''pm'')
+	@type in(''partition'',''part'',''pd'')
 
 See usage examples below.
 
@@ -1031,24 +1108,25 @@ See usage examples below.
 -------------------------------------------------------------------------------------------------------
 --General Object Search
 -------------------------------------------------------------------------------------------------------
---Search for any object or sql agent job that has ''Search_term'' in the name.
+--Search for any object or sql agent job that has ''Search_term'' in the name over the entire server.
 sp_search @search =''Search_term'' 
 
---Search for any object (EXCLUDING system object names) or sql agent job that has ''Search_term'' in the name and exist only in the specified DB.
+--Search for any object (EXCLUDING system object names) or sql agent job that has ''Search_term'' in the name and exist only in the specified DB.  Use @sys_obj = 1 to include system related objects.
 sp_search @search =''Search_term'', @db =''Database_Name'' 
-
---Search for any object (INCLUDING system object names) or sql agent job that has ''Search_term'' in the name and exist only in the specified DB.
-sp_search @search =''Search_term'', @db =''Database_Name'', @sys_obj = 1 
 
 
 -------------------------------------------------------------------------------------------------------
 --Column Search
 -------------------------------------------------------------------------------------------------------
 --Search for any column (EXCLUDING system columns) that has ''Search_term'' in the column name and exist only in the specified DB.
-sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''column'' --You can also supply ''col'' or simply ''c'' to denote you want the search type on columns.
+sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''column'' --You can also supply ''col'' or simply ''c'' to denote you want the search type on columns.  Use @sys_obj = 1 to include system related objects.
 
---Search for any column (INCLUDING system columns) that has ''Search_term'' in the column name and exist only in the specified DB.
-sp_search @search =''Search_term'', @db =''Database_Name'', @sys_obj = 1 , @type = ''column'' --You can also supply ''col'' or simply ''c'' to denote you want the search type on columns.
+
+-------------------------------------------------------------------------------------------------------
+--Schema Search
+-------------------------------------------------------------------------------------------------------
+--Search for any schema that has ''Search_term'' in the column name and exist only in the specified DB.
+sp_search @search =''<Schema Name>'', @db =''<Database_Name>'', @type = ''schema'' --You can also supply ''s''to denote you want the search type on schema. Use @sys_obj = 1 to include system related objects.
 
 
 -------------------------------------------------------------------------------------------------------
@@ -1063,11 +1141,11 @@ sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''index'' --
 --Index search also allows for fully qualified 3 part comma separated objects (database.schema.table). If a fully qualified object is supplied, this will supercede any @db comma separated strings. 
 sp_search @search = ''msdb.dbo.sysjobs,msdb.dbo.sysjobhistory'' ,@type=''i'';
 
+
 -------------------------------------------------------------------------------------------------------
 --Query Stats Search
 -------------------------------------------------------------------------------------------------------
---Search sys.dm_exec_query_stats for ''Search_term'' in the query text.  This function can be filtered just to a specific db, as query_stats are server wide.
---@db is not necessary in this usage since query stats are server level; @db will be ignored.
+--Search sys.dm_exec_query_stats for ''Search_term'' in the query text.  This function cannot be filtered to a specific db, as query_stats are server wide. @db will be ignored.
 sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''QueryStats'' --You can also supply ''qs'' to denote you want the search type on query stats.
 
 
@@ -1113,8 +1191,6 @@ sp_search @type = ''part'';
 --------------------------------------------------------------------
 
 '
-
-Print '/*'+@VersionHistory+'*/';
 Return;
 
 

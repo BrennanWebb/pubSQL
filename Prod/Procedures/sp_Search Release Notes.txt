@@ -33,3 +33,4 @@ Ver	|	Author		|	Date			|	Note
 26	|	Brennan Webb	|	04/04/2025		|	Added exclusion for offline db's
 27	|	Brennan Webb	|	06/02/2025		|	Added ability to supply single column select SQL for looping.
 28	|	Brennan Webb	|	06/19/2025		|	Aligned column outputs for replication searches.
+29	|	Brennan Webb	|	07/15/2025		|	Added [suggestion] for indexes. Added schema search. Added wildcard for @db.  
