@@ -484,17 +484,17 @@ If @type in ('index','ix','i')
 							, ps.index_id
 						) IndexStats ON I.[object_id] = IndexStats.[object_id] AND I.index_id = IndexStats.index_id
 			OUTER APPLY (SELECT STRING_AGG(QuoteName(COL.[name]) + IIF(is_descending_key = 1,'' desc '',''''), '', '') WITHIN GROUP (ORDER BY IC.key_ordinal) AS Cols
-						   FROM sys.index_columns IC WITH(NOLOCK)
-						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
-						   WHERE IC.[object_id] = o.Object_ID
-							 AND IC.index_id = I.index_id
-							 AND IC.is_included_column = 0) AS IndexedColumns
+							FROM sys.index_columns IC WITH(NOLOCK)
+							INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
+							WHERE IC.[object_id] = o.Object_ID
+								AND IC.index_id = I.index_id
+								AND IC.is_included_column = 0) AS IndexedColumns
 			OUTER APPLY (SELECT STRING_AGG(QuoteName(COL.[name]), '', '') WITHIN GROUP (ORDER BY IC.key_ordinal) AS Cols
-						   FROM sys.index_columns IC WITH(NOLOCK)
-						   INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
-						   WHERE IC.[object_id] = o.Object_ID
-							 AND IC.index_id = I.index_id
-							 AND IC.is_included_column = 1) AS IncludedColumns
+							FROM sys.index_columns IC WITH(NOLOCK)
+							INNER JOIN sys.columns COL WITH(NOLOCK) ON IC.[object_id] = COL.[object_id] AND IC.[column_id] = COL.[column_id]
+							WHERE IC.[object_id] = o.Object_ID
+								AND IC.index_id = I.index_id
+								AND IC.is_included_column = 1) AS IncludedColumns
 			WHERE 1=1
 			'+IIF(@sys_obj=0,'','--')+'and o.is_ms_shipped = 0 --Dont include SQL packaged objects if @sys_obj = 0.
 			'+IIF((len(@search) = 0 or @search is Null), '',
