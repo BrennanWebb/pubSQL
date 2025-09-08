@@ -11,11 +11,11 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 	@print bit = 0,
 	@debug bit = 0,
 	@filter nvarchar(1000) = Null,
-	@table_out nvarchar(150) = Null
+	@table_out nvarchar(150) = Null Output
 )
 as
 Set NOCOUNT ON
-Declare @VersionHistory VARCHAR(MAX) ='Version 30 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
+Declare @VersionHistory VARCHAR(MAX) ='Version 32 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
 Declare @start_time DATETIME = GETDATE();
 Declare @end_time datetime 
 Declare @nvar_sql nvarchar(max);
@@ -77,7 +77,7 @@ If (Len(@Search)=0 or @Search is null) and @type is null
 	End;
 
 -------------------------------------------------------------------------------------------------------
---Since @search is not blank, lets see If it is SQL.  We will test If the user is trying to submit a list of terms to be iterated through. 
+--Since @search is not blank, lets see if it is SQL.  We will test If the user is trying to submit a list of terms to be iterated through. 
 --Only the first ordinal column will be used (column_id=1). @search must match the pattern 'Select %% From %'.
 --This is testing script until further notice.
 -------------------------------------------------------------------------------------------------------
@@ -111,7 +111,7 @@ Begin
 			Set @error = @error +' See help documentation below.'
 			Exec ##sp_message @string =@error, @errorseverity=11;
 			Goto help;
-		End
+		End;
 End;
 -------------------------------------------------------------------------------------------------------
 --See If we can determine any unique object id's by @search string and or @db x @search string.
@@ -205,10 +205,11 @@ EXEC sp_executesql @nvar_sql;
 -------------------------------------------------------------------------------------------------------
 --General Object + SQL Agent Search Module
 -------------------------------------------------------------------------------------------------------
+
 If @type IS NULL
 	BEGIN
 		--create randomized temp  table
-		Set @nvar_sql='drop table If exists '+@randtbl+';
+		Set @nvar_sql='drop table if exists '+@randtbl+';
 				  create table '+@randtbl+' ([Source] nvarchar(500), [ID] nvarchar(500), [Name] nvarchar(500), [Definition] nvarchar(max), [DataLengthBytes] int, [Type] nvarchar(500), [Created] datetime, [Modified] datetime, [Notes] varchar(max) null);
 				  '
 		If @Print = 1 Print @nvar_sql;
@@ -424,7 +425,7 @@ Group by a.id
 If @type in ('index','ix','i')
 	Begin
 		Set @nvar_sql='drop table If exists '+@randtbl+';
-				  create table '+@randtbl+' (ID Int Identity(1,1),[Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), ObjectID int, [Published] varchar(3), [IndexName] nvarchar(128), [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), Suggestion varchar(150), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] varchar(100), [LastUserSeek] nvarchar(4000), [UserScans] varchar(100), [LastUserScan] nvarchar(4000), [UserLookups] varchar(100), [LastUserLookup] nvarchar(4000), [UserUpdates] varchar(100), [LastUserUpdate] nvarchar(4000), [SystemSeeks] varchar(100), [LastSystemSeek] nvarchar(4000), [SystemScans] varchar(100), [LastSystemScan] nvarchar(4000), [SystemLookups] varchar(100), [LastSystemLookup] nvarchar(4000), [SystemUpdates] varchar(100), [LastSystemUpdate] nvarchar(4000),DropScript Varchar(max),CreateScript Varchar(max));
+				  create table '+@randtbl+' (ID Int Identity(1,1),[Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), ObjectID int, [Published] varchar(3), [IndexName] nvarchar(128), [IndexCreate] DateTime, [IndexModify] DateTime, [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), Suggestion varchar(150), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] numeric, [LastUserSeek] DateTime, [UserScans] numeric, [LastUserScan] DateTime, [UserLookups] numeric, [LastUserLookup] DateTime, [UserUpdates] numeric, [LastUserUpdate] DateTime, [SystemSeeks] numeric, [LastSystemSeek] DateTime, [SystemScans] numeric, [LastSystemScan] DateTime, [SystemLookups] numeric, [LastSystemLookup] DateTime, [SystemUpdates] numeric, [LastSystemUpdate] DateTime,DropScript Varchar(max),CreateScript Varchar(max));
 				  '
 		If @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql;
@@ -438,14 +439,16 @@ If @type in ('index','ix','i')
 			SELECT 
 			  DB_Name() [Database]
 			, S.[name]	[SchemaName]
-			, o.[name] [TableName]
-			, o.Object_ID as ObjectID
-			, o.Is_Published [Published]
+			, O.[name] [TableName]
+			, O.Object_ID as ObjectID
+			, O.Is_Published [Published]
 			, I.[name] [IndexName]
+			, O.[create_date] [IndexCreate]
+			, O.[modify_date] [IndexModify] -- The date the index was last rebuilt or altered
 			, I.[Type_Desc] [IndexType]
-			, [Is_Disabled] [Disabled]
-			, is_primary_key [PrimaryKey]
-			, is_unique [Unique]
+			, I.[Is_Disabled] [Disabled]
+			, I.is_primary_key [PrimaryKey]
+			, I.is_unique [Unique]
 			, IndexedColumns.Cols [IndexedColumns]
 			, IncludedColumns.Cols [IncludedColumns]
 			, Null as Suggestion
@@ -519,36 +522,18 @@ If @type in ('index','ix','i')
 		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
 		If @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql); 
-
-		Set @nvar_sql ='
-		Update A
-		Set  DropScript = IIF([PrimaryKey]=1
-								,''Alter Table ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+'' Drop Constraint ''+ QuoteName([IndexName])+'';''
-								,''Drop Index ''+ QuoteName([IndexName]) + CHAR(10)+ '' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName])+'';''
-							 )+ CHAR(10) 
-			,CreateScript = CHAR(10) + 
-							IIF([PrimaryKey]=1
-									,''ALTER TABLE ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+ ''ADD CONSTRAINT ''+ QuoteName([IndexName])+ '' PRIMARY KEY ''+ [IndexType]+'' (''+[IndexedColumns]+'');''
-									,''Create ''+[IndexType]+'' Index ''+ QuoteName([IndexName])
-										+ CHAR(10)+'' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) 
-										+ ''(''+ [IndexedColumns]+ '')''
-										+ IIF(Len([IncludedColumns]) <>0, CHAR(10)+'' Include( ''+[IncludedColumns]+ '')'', '''')
-										+ IIF(Len([Filter])<>0, CHAR(10)+'' Where ''+ [Filter], '''')
-										+'';''
-								)
-		From '+@randtbl+' A
-		'
-		If @Print = 1 Print @nvar_sql;
-		EXEC (@nvar_sql);
-
 		
 		Set @nvar_sql ='
 		Update A
-		Set Suggestion = IIF(c.Merge_ID is not null,''Merge into #''+Cast(c.Merge_ID as varchar(25)),
+		Set Suggestion = 
+						 IIF(d.Table_ID is not null,''Drop Table ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]),
+						 IIF(IsNull(a.[UserSeeks],0) = 0 and IsNull(a.[UserScans],0) = 0 and IsNull(a.[UserLookups],0) = 0 and a.[PrimaryKey] = 0 and a.[unique] = 0 and a.IndexType =''nonclustered'',''Drop: Non-used Index'',
+						 IIF(c.Merge_ID is not null,''Merge into #''+Cast(c.Merge_ID as varchar(25)),
 						 IIF(b.Dup_ID is not null and c.Merge_ID is null and a.PrimaryKey = 1,''Merge: PK for #''+Cast(b.Dup_ID as varchar(25)),
 						 IIF(b.Dup_ID is not null and c.Merge_ID is null,''Drop: Dup of #''+Cast(b.Dup_ID as varchar(25)),
-						 Null))) 
-		From '+@randtbl+' A
+						 
+						 Null))))) 
+		From '+@randtbl+' A				
 		--Dups
 		Outer Apply (Select Min(ID) Dup_ID From  '+@randtbl+' b 
 						Where  a.[Database] = b.[Database]
@@ -563,6 +548,33 @@ If @type in ('index','ix','i')
 						and a.[IndexedColumns] = c.[IndexedColumns]
 						and IsNull(a.[IncludedColumns],'''') <>  IsNull(c.[IncludedColumns],'''')
 						and a.id > c.id)c
+		--Table NonUsage
+		Outer Apply (Select Min(ID) Table_ID From  '+@randtbl+' d 
+						Where  IndexType in (''HEAP'',''CLUSTERED'')
+						Group by ID
+						Having Sum(isNull([UserSeeks],0)) = 0 and Sum(IsNull([UserScans],0)) = 0 and Sum(isNull([UserLookups],0)) = 0
+						and a.id = d.id)d
+		'
+		If @Print = 1 Print @nvar_sql;
+		EXEC (@nvar_sql);
+
+		Set @nvar_sql ='
+		Update A
+		Set  DropScript =	IIF([Suggestion] like ''Drop Table %'', Suggestion,
+							IIF([PrimaryKey]=1
+								,''Alter Table ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+'' Drop Constraint ''+ QuoteName([IndexName])+'';''
+								,''Drop Index ''+ QuoteName([IndexName]) + CHAR(10)+ '' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName])+'';''
+							 ))+ CHAR(10) 
+			,CreateScript = IIF([PrimaryKey]=1
+									,''ALTER TABLE ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) + CHAR(10)+ ''ADD CONSTRAINT ''+ QuoteName([IndexName])+ '' PRIMARY KEY ''+ [IndexType]+'' (''+[IndexedColumns]+'');''
+									,''Create ''+[IndexType]+'' Index ''+ QuoteName([IndexName])
+										+ CHAR(10)+'' ON ''+QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]) 
+										+ ''(''+ [IndexedColumns]+ '')''
+										+ IIF(Len([IncludedColumns]) <>0, CHAR(10)+'' Include( ''+[IncludedColumns]+ '')'', '''')
+										+ IIF(Len([Filter])<>0, CHAR(10)+'' Where ''+ [Filter], '''')
+										+'';''
+								)+ CHAR(10)
+		From '+@randtbl+' A
 		'
 		If @Print = 1 Print @nvar_sql;
 		EXEC (@nvar_sql);
@@ -1070,19 +1082,25 @@ If @type in('Partition','part','pd')
 -------------------------------------------------------------------------------------------------------
 
 If @table_out is not null
-	Begin Try
-		Set @nvar_sql = IIF(@table_out_flag = 1
-							,' Insert into '+@table_out+' Select * From '+@randtbl+' a;'
-							,' Select * into '+@table_out+' From '+@randtbl+' a;'
-							)
-		If @Print = 1 Print @nvar_sql+Char(10);
-		EXEC (@nvar_sql);
-		Print Char(10)+'Select * From '+@table_out;
-	End Try
-	Begin Catch
-		Print Char(10)+'Error with @table_out.';
-		Throw;
-	End Catch;
+	Begin
+		Begin Try
+			Set @nvar_sql = IIF(@table_out_flag = 1
+								,' Insert into '+@table_out+' Select * From '+@randtbl+' a;'
+								,' Select * into '+@table_out+' From '+@randtbl+' a;'
+								)
+			If @Print = 1 Print @nvar_sql+Char(10);
+			EXEC (@nvar_sql);
+			Print Char(10)+'Select * From '+@table_out;
+		End Try
+		Begin Catch
+			Print Char(10)+'Error with @table_out.';
+			Throw;
+		End Catch;
+	End;
+Else
+	Begin
+		Set @table_out=@randtbl --Set @Table_Out as the rand table for other uses.
+	End
 
 Set @end_time = getdate();
 print char(10)+char(10)+'sp_search run time (seconds):'+Cast(DateDiff(s,@start_time,@end_time)as varchar(50));
