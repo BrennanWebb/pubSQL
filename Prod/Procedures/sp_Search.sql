@@ -15,7 +15,7 @@ CREATE or ALTER   proc [dbo].[sp_Search]
 )
 as
 Set NOCOUNT ON
-Declare @VersionHistory VARCHAR(MAX) ='Version 32 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
+Declare @VersionHistory VARCHAR(MAX) ='Version 35 | Release Notes: https://github.com/BrennanWebb/pubSQL/blob/main/Prod/Procedures/sp_Search%20Release%20Notes.txt'
 Declare @start_time DATETIME = GETDATE();
 Declare @end_time datetime 
 Declare @nvar_sql nvarchar(max);
@@ -77,7 +77,7 @@ If (Len(@Search)=0 or @Search is null) and @type is null
 	End;
 
 -------------------------------------------------------------------------------------------------------
---Since @search is not blank, lets see if it is SQL.  We will test If the user is trying to submit a list of terms to be iterated through. 
+--Since @search is not blank, lets see if it is SQL.  We will test if the user is trying to submit a list of terms to be iterated through. 
 --Only the first ordinal column will be used (column_id=1). @search must match the pattern 'Select %% From %'.
 --This is testing script until further notice.
 -------------------------------------------------------------------------------------------------------
@@ -114,7 +114,8 @@ Begin
 		End;
 End;
 -------------------------------------------------------------------------------------------------------
---See If we can determine any unique object id's by @search string and or @db x @search string.
+--Fully Qualified Name (FQN) logic
+--See if we can determine any unique object id's by @search string and or @db x @search string.
 -------------------------------------------------------------------------------------------------------
 Begin
 	Set @nvar_sql ='
@@ -140,7 +141,7 @@ Begin
 	Set @object_id_tbl_cnt=@@Rowcount;
 
 	--Object_id search is only available for particular search types. This will limit @db to exactly what is specified.
-	If @object_id_tbl_cnt>0 and @type in ('index', 'ix','i')
+	If @object_id_tbl_cnt>0 and @type in ('index', 'ix','i','qds')
 		Begin
 			Set @nvar_sql = 'Select @db= String_Agg([DatabaseName],'','') From '+@object_id_tbl+';'
 			If @debug= 1 Print @nvar_sql;
@@ -425,7 +426,7 @@ Group by a.id
 If @type in ('index','ix','i')
 	Begin
 		Set @nvar_sql='drop table If exists '+@randtbl+';
-				  create table '+@randtbl+' (ID Int Identity(1,1),[Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), ObjectID int, [Published] varchar(3), [IndexName] nvarchar(128), [IndexCreate] DateTime, [IndexModify] DateTime, [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), Suggestion varchar(150), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] numeric, [LastUserSeek] DateTime, [UserScans] numeric, [LastUserScan] DateTime, [UserLookups] numeric, [LastUserLookup] DateTime, [UserUpdates] numeric, [LastUserUpdate] DateTime, [SystemSeeks] numeric, [LastSystemSeek] DateTime, [SystemScans] numeric, [LastSystemScan] DateTime, [SystemLookups] numeric, [LastSystemLookup] DateTime, [SystemUpdates] numeric, [LastSystemUpdate] DateTime,DropScript Varchar(max),CreateScript Varchar(max));
+				  create table '+@randtbl+' (ID Int Identity(1,1),[Database] Nvarchar(100),[SchemaName] nvarchar(128), [TableName] nvarchar(128), [TableCreate] DateTime, ObjectID int, [Published] varchar(3), [IndexName] nvarchar(128), [StatsUpdate] DateTime, [IndexType] varchar(30), [Disabled] varchar(3), [PrimaryKey] varchar(3), [Unique] varchar(10), [IndexedColumns] nvarchar(MAX), [IncludedColumns] nvarchar(MAX), Suggestion varchar(150), [AllowsRowLocks] varchar(3), [AllowsPageLocks] varchar(3), [FillFactor] nvarchar(4000), [Padded] varchar(3), [Filter] nvarchar(MAX), [IndexRowCount] bigint, [TotalSpaceMB] numeric, [UsedSpaceMB] numeric, [UnusedSpaceMB] numeric, [UserSeeks] numeric, [LastUserSeek] DateTime, [UserScans] numeric, [LastUserScan] DateTime, [UserLookups] numeric, [LastUserLookup] DateTime, [UserUpdates] numeric, [LastUserUpdate] DateTime, [SystemSeeks] numeric, [LastSystemSeek] DateTime, [SystemScans] numeric, [LastSystemScan] DateTime, [SystemLookups] numeric, [LastSystemLookup] DateTime, [SystemUpdates] numeric, [LastSystemUpdate] DateTime,DropScript Varchar(max),CreateScript Varchar(max));
 				  '
 		If @Print = 1 Print @nvar_sql;
 		EXEC sp_executesql @nvar_sql;
@@ -440,11 +441,11 @@ If @type in ('index','ix','i')
 			  DB_Name() [Database]
 			, S.[name]	[SchemaName]
 			, O.[name] [TableName]
-			, O.Object_ID as ObjectID
+			, O.[create_date] [TableCreate]
+			, O.Object_ID as [ObjectID]
 			, O.Is_Published [Published]
 			, I.[name] [IndexName]
-			, O.[create_date] [IndexCreate]
-			, O.[modify_date] [IndexModify] -- The date the index was last rebuilt or altered
+			, STATS_DATE(I.object_id, I.index_id) [StatsUpdate] -- The date the index was last rebuilt or significantly altered
 			, I.[Type_Desc] [IndexType]
 			, I.[Is_Disabled] [Disabled]
 			, I.is_primary_key [PrimaryKey]
@@ -526,7 +527,7 @@ If @type in ('index','ix','i')
 		Set @nvar_sql ='
 		Update A
 		Set Suggestion = 
-						 IIF(d.Table_ID is not null,''Drop Table ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]),
+						 IIF(d.Table_ID is not null,''Drop Table If Exists ''+ QuoteName([Database])+''.''+QuoteName([SchemaName])+''.''+QuoteName([TableName]),
 						 IIF(IsNull(a.[UserSeeks],0) = 0 and IsNull(a.[UserScans],0) = 0 and IsNull(a.[UserLookups],0) = 0 and a.[PrimaryKey] = 0 and a.[unique] = 0 and a.IndexType =''nonclustered'',''Drop: Non-used Index'',
 						 IIF(c.Merge_ID is not null,''Merge into #''+Cast(c.Merge_ID as varchar(25)),
 						 IIF(b.Dup_ID is not null and c.Merge_ID is null and a.PrimaryKey = 1,''Merge: PK for #''+Cast(b.Dup_ID as varchar(25)),
@@ -742,11 +743,17 @@ If @type in ('QueryStats','qs')
 			(qs.total_logical_reads	/ 1000)	/qs.execution_count AS Avg_Logical_Reads,
 			(qs.total_physical_reads / 1000)/qs.execution_count AS Avg_Physical_Reads,
 			(qs.total_logical_writes / 1000)/qs.execution_count AS Avg_Logical_Writes,
-			(qs.total_elapsed_time / 1000)	/qs.execution_count AS Avg_Duration_MS
+			(qs.total_elapsed_time / 1000)	/qs.execution_count AS Avg_Duration_MS,
+			------
+			qs.creation_time,
+			qs.query_hash,
+			qs.query_plan_hash,
+			CAST(qp.query_plan AS XML) AS ExecutionPlanXML
 		
 		Into '+@randtbl+'
 		FROM sys.dm_exec_query_stats AS qs  with (NOLOCK)
 		Cross Apply sys.dm_exec_sql_text(qs.sql_handle) AS qt
+		Outer Apply sys.dm_exec_query_plan(qs.plan_handle) AS qp
 		Where qt.[text] not like ''%dm_exec_query_stats%'' 
 		'+IIF((len(@search) = 0 or @search is Null), '',' AND qt.[text] like ''%' + @search + '%'' ESCAPE ''!'' ')+'
 		;
@@ -756,6 +763,84 @@ If @type in ('QueryStats','qs')
 		EXEC sp_executesql @nvar_sql;
 
 		Set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by Last_Cache_Hit_Ratio ASC')+';';  
+		print char(10)+@nvar_sql;
+		EXEC sp_executesql @nvar_sql;
+
+	End;
+
+-------------------------------------------------------------------------------------------------------
+--Query Data Store (QDS) Search Module
+-------------------------------------------------------------------------------------------------------
+If @type in ('qds')
+	Begin
+		Set @nvar_sql='drop table If exists '+@randtbl+';
+				  create table '+@randtbl+' ([Database] NVARCHAR(128), [ObjectName] NVARCHAR(257), [Execution_Date_Local] DATE NULL, [query_sql_text] NVARCHAR(MAX), [query_id] BIGINT, [plan_id] BIGINT, [ExecutionPlanXML] XML, [Daily_Execution_Count] BIGINT NULL, [Avg_Duration_ms] DECIMAL(20, 3), [Avg_Duration_Min] DECIMAL(20, 6), [Avg_CPU_Time_ms] DECIMAL(20, 3), [Avg_Logical_Reads] DECIMAL(20, 3), [Avg_Physical_Reads] DECIMAL(20, 3), [Avg_Max_Used_Memory_KB] DECIMAL(20, 3), [is_forced_plan] BIT, [execution_type_desc] NVARCHAR(128), [Last_Execution_Time_Local] DATETIME2(7));
+				  '
+		If @Print = 1 Print @nvar_sql;
+		EXEC sp_executesql @nvar_sql;
+
+		Set @nvar_sql ='Use [?];
+		Begin
+			exec ##sp_message ''[?] started QDS search'';
+		End;
+
+		Insert into '+@randtbl+'
+		SELECT
+			DB_NAME() AS [Database],
+			OBJECT_SCHEMA_NAME(q.object_id) + ''.'' + OBJECT_NAME(q.object_id) AS ObjectName,
+			CAST(DATEADD(MINUTE, DATEDIFF(MINUTE, GETUTCDATE(), GETDATE()), rs.last_execution_time) AS DATE) AS Execution_Date_Local,
+			qtxt.query_sql_text,
+			q.query_id,
+			p.plan_id,
+			CAST(p.query_plan AS XML) AS ExecutionPlanXML,
+			SUM(rs.count_executions) AS Daily_Execution_Count,
+			SUM(rs.count_executions * rs.avg_duration) / NULLIF(SUM(rs.count_executions), 0) / 1000.0 AS Avg_Duration_ms,
+			SUM(rs.count_executions * rs.avg_duration) / NULLIF(SUM(rs.count_executions), 0) / 60000000.0 AS Avg_Duration_Min,
+			SUM(rs.count_executions * rs.avg_cpu_time) / NULLIF(SUM(rs.count_executions), 0) / 1000.0 AS Avg_CPU_Time_ms,
+			SUM(rs.count_executions * rs.avg_logical_io_reads) / NULLIF(SUM(rs.count_executions), 0) AS Avg_Logical_Reads,
+			SUM(rs.count_executions * rs.avg_physical_io_reads) / NULLIF(SUM(rs.count_executions), 0) AS Avg_Physical_Reads,
+			SUM(rs.count_executions * rs.avg_query_max_used_memory) / NULLIF(SUM(rs.count_executions), 0) * 8.0 AS Avg_Max_Used_Memory_KB,
+			p.is_forced_plan,
+			rs.execution_type_desc,
+			MAX(DATEADD(MINUTE, DATEDIFF(MINUTE, GETUTCDATE(), GETDATE()), rs.last_execution_time)) AS Last_Execution_Time_Local
+		FROM 
+			sys.query_store_query_text AS qtxt WITH (NOLOCK)
+		INNER JOIN 
+			sys.query_store_query AS q WITH (NOLOCK)
+			ON qtxt.query_text_id = q.query_text_id
+		INNER JOIN 
+			sys.query_store_plan AS p WITH (NOLOCK)
+			ON q.query_id = p.query_id
+		INNER JOIN 
+			sys.query_store_runtime_stats AS rs WITH (NOLOCK)
+			ON p.plan_id = rs.plan_id
+		WHERE rs.last_execution_time >= DATEADD(DAY, -7, GETUTCDATE())
+		'+IIF((len(@search) = 0 or @search is Null), '',
+			IIF(@object_id_tbl_cnt>0
+				,' and exists (Select * From '+@object_id_tbl+' oit Where oit.[DatabaseName]= DB_Name() and q.[object_id]=oit.[object_id]) '
+				,' AND (qtxt.query_sql_text LIKE ''%' + @search + '%'' ESCAPE ''!'' OR OBJECT_NAME(q.object_id) LIKE ''%' + @search + '%'' ESCAPE ''!'')'
+			)
+		)+'
+		GROUP BY
+			OBJECT_SCHEMA_NAME(q.object_id) + ''.'' + OBJECT_NAME(q.object_id),
+			CAST(DATEADD(MINUTE, DATEDIFF(MINUTE, GETUTCDATE(), GETDATE()), rs.last_execution_time) AS DATE),
+			qtxt.query_sql_text,
+			q.query_id,
+			p.plan_id,
+			p.query_plan,
+			p.is_forced_plan,
+			rs.execution_type_desc
+		;
+		
+		Begin
+			exec ##sp_message ''[?] Results Found'', @@Rowcount;
+		End;
+		'
+		Set @nvar_sql = 'Exec '+@sp_randForeachDb+' N'''+Replace(@nvar_sql,'''','''''')+''''
+		If @Print = 1 Print @nvar_sql;
+		EXEC (@nvar_sql);
+
+		Set @nvar_sql='Select * From '+@randtbl+' a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by [Database], Execution_Date_Local DESC, Daily_Execution_Count DESC')+';';  
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
@@ -937,7 +1022,7 @@ If @type in('Reference', 'ref')
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
-		Set @nvar_sql='Select * From '+@randtbl+'_Messages a '+Char(10)+'Where 1=1 '+IIF(@filter is not null, Char(10)+'AND '+@filter,'')+IIF(@sort is not null, Char(10)+'Order by '+@sort,Char(10)+'Order by 1 ')+';'; 
+		Set @nvar_sql='Select * From '+@randtbl+'_Messages a Order by 1;'; 
 		print char(10)+@nvar_sql;
 		EXEC sp_executesql @nvar_sql;
 
@@ -1139,6 +1224,7 @@ TYPES:
 	@type in (''schema'',''s'')
 	@type in (''index'',''ix'',''i'')
 	@type in (''QueryStats'',''qs'')
+	@type in (''QDS'',''qds'')
 	@type in (''replication'',''repl'',''r'')
 	@type in(''reference'', ''ref'')
 	@type in(''permission'',''permissions'',''perm'',''pm'')
@@ -1191,6 +1277,13 @@ sp_search @search = ''msdb.dbo.sysjobs,msdb.dbo.sysjobhistory'' ,@type=''i'';
 -------------------------------------------------------------------------------------------------------
 --Search sys.dm_exec_query_stats for ''Search_term'' in the query text.  This function cannot be filtered to a specific db, as query_stats are server wide. @db will be ignored.
 sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''QueryStats'' --You can also supply ''qs'' to denote you want the search type on query stats.
+
+
+-------------------------------------------------------------------------------------------------------
+--Query Data Store (QDS) Search
+-------------------------------------------------------------------------------------------------------
+--Search sys.query_store_* for ''Search_term'' in the query text or object name over the last 7 days.
+sp_search @search =''Search_term'', @db =''Database_Name'', @type = ''QDS'' --You can also supply ''qds'' to denote you want the search type on query data store.
 
 
 -------------------------------------------------------------------------------------------------------

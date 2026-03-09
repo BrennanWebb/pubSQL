@@ -36,4 +36,7 @@ Ver	|	Author		|	Date			|	Note
 29	|	Brennan Webb	|	07/15/2025		|	Added [suggestion] for indexes. Added schema search. Added wildcard for @db. 
 30	|	Brennan Webb	|	08/21/2025		|	Added @Table_out 
 31	|	Brennan Webb	|	08/26/2025		|	Minor fix
-32	|	Brennan Webb	|	09/08/2025		|	Added date (create and modify) to index output.  Enhanced index suggestions. 
+32	|	Brennan Webb	|	09/08/2025		|	Added date (create and modify) to index output.  Enhanced index suggestions.
+33	|	Brennan Webb	|	03/09/2026		|	Initial integration of Query Data Store (QDS) search capabilities (@type=''QDS'').
+34	|	Brennan Webb	|	03/09/2026		|	Enhanced QueryStats (QS) with clickable Execution Plan XML, plan creation time, and query hashes.
+35	|	Brennan Webb	|	03/09/2026		|	Enhanced QDS with core resource metrics (CPU, IO, Memory), plan forcing status, and execution type descriptions. 
